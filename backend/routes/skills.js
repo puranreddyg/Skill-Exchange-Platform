@@ -378,20 +378,20 @@ router.post('/sessions/:sessionId/dispute', async (req, res) => {
 
         if (process.env.GEMINI_API_KEY && chatTranscript.trim().length > 0) {
             try {
-                const prompt = \`You are an impartial dispute resolution AI for a skill exchange platform.
-Teacher ID: \${session.teacher_id} (\${session.teacher_name})
-Student ID: \${session.learner_id}
-Dispute Reason from Student: "\${disputeReason}"
+                const prompt = `You are an impartial dispute resolution AI for a skill exchange platform.
+Teacher ID: ${session.teacher_id} (${session.teacher_name})
+Student ID: ${session.learner_id}
+Dispute Reason from Student: "${disputeReason}"
 
 Here is the chat transcript:
-\${chatTranscript}
+${chatTranscript}
 
 Analyze the chat logically. If the teacher was professional and provided the service but the student is trolling, fault the student. If the teacher no-showed, ignored messages, or was unhelpful, fault the teacher. If it's a mutual misunderstanding, choose 'split'.
 
 Return ONLY a valid JSON object in this exact format, with no markdown formatting around it:
-{ "fault": "teacher" | "student" | "split", "reasoning": "A 1-2 sentence explanation." }\`;
+{ "fault": "teacher" | "student" | "split", "reasoning": "A 1-2 sentence explanation." }`;
 
-                const geminiRes = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\${process.env.GEMINI_API_KEY}\`, {
+                const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -402,7 +402,7 @@ Return ONLY a valid JSON object in this exact format, with no markdown formattin
                 const aiData = await geminiRes.json();
                 if (aiData.candidates && aiData.candidates[0].content.parts[0].text) {
                     let text = aiData.candidates[0].content.parts[0].text.trim();
-                    if (text.startsWith('\`\`\`json')) text = text.replace(/^\`\`\`json\s*/, '').replace(/\`\`\`$/, '').trim();
+                    if (text.startsWith('```json')) text = text.replace(/^```json\s*/, '').replace(/```$/, '').trim();
                     const parsed = JSON.parse(text);
                     fault = parsed.fault || "split";
                     reasoning = parsed.reasoning || "AI decided this resolution.";
