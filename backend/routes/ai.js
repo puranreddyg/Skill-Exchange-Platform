@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { messages, sessions } = require('../store');
+const db = require('../db');
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'YOUR_API_KEY_HERE');
@@ -8,18 +8,20 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'YOUR_API_KEY
 router.post('/generate-review', async (req, res) => {
     const { sessionId } = req.body;
 
-    const session = sessions.find(s => s.id === sessionId);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-
-    const sessionMessages = messages[sessionId] || [];
-    
-    if (sessionMessages.length === 0) {
-        return res.json({ 
-            suggestion: "Great session, learned a lot from this teacher!" 
-        });
-    }
-
     try {
+        const { rows: sessionRows } = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+        const session = sessionRows[0];
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        const { rows: messageRows } = await db.query('SELECT * FROM messages WHERE session_id = $1 ORDER BY timestamp ASC', [sessionId]);
+        const sessionMessages = messageRows.map(m => ({ role: m.sender_id === session.teacher_id ? 'Teacher' : 'Student', text: m.text }));
+        
+        if (sessionMessages.length === 0) {
+            return res.json({ 
+                suggestion: "Great session, learned a lot from this teacher!" 
+            });
+        }
+
         if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_API_KEY_HERE') {
             const mockSuggestion = `Based on context (${sessionMessages.length} messages analyzed), the teacher provided great support. "Very helpful and clear explanations!"`;
             return res.json({ suggestion: mockSuggestion });

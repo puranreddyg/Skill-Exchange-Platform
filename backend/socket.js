@@ -1,5 +1,5 @@
 const { Server } = require('socket.io');
-const { sessions, messages, saveData } = require('./store');
+const db = require('./db');
 
 module.exports = function setupSocket(server) {
     const io = new Server(server, {
@@ -28,42 +28,50 @@ module.exports = function setupSocket(server) {
             socket.join(sessionId);
         });
 
-        socket.on('send_message', (data) => {
+        socket.on('send_message', async (data) => {
             const { sessionId, senderId, senderName, text } = data;
-            const message = {
-                senderId,
-                senderName,
-                text,
-                timestamp: new Date().toISOString()
-            };
+            
+            try {
+                const timestamp = new Date().toISOString();
+                
+                await db.query(
+                    'INSERT INTO messages (session_id, sender_id, sender_name, text, timestamp) VALUES ($1, $2, $3, $4, $5)',
+                    [sessionId, senderId, senderName, text, timestamp]
+                );
 
-            if (!messages[sessionId]) {
-                messages[sessionId] = [];
-            }
-            messages[sessionId].push(message);
-            saveData();
-
-            io.to(sessionId).emit('receive_message', message);
-
-            const session = sessions.find(s => s.id === sessionId);
-            if (session) {
-                const recipientId = session.teacherId === senderId ? session.learnerId : session.teacherId;
-                io.to(recipientId).emit('new_chat_message', {
-                    sessionId,
+                const message = {
+                    senderId,
                     senderName,
-                    skillTitle: session.skillTitle,
-                    text
-                });
+                    text,
+                    timestamp
+                };
+
+                io.to(sessionId).emit('receive_message', message);
+
+                const { rows: sessionRows } = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+                const session = sessionRows[0];
+                
+                if (session) {
+                    const recipientId = session.teacher_id === senderId ? session.learner_id : session.teacher_id;
+                    io.to(recipientId).emit('new_chat_message', {
+                        sessionId,
+                        senderName,
+                        skillTitle: session.skill_title,
+                        text
+                    });
+                }
+            } catch (err) {
+                console.error("Socket send_message error:", err);
             }
         });
 
-        socket.on('send_meeting_link', (data) => {
+        socket.on('send_meeting_link', async (data) => {
             const { sessionId, meetingLink } = data;
-            const session = sessions.find(s => s.id === sessionId);
-            if (session) {
-                session.meetingLink = meetingLink;
-                saveData();
+            try {
+                await db.query('UPDATE sessions SET meeting_link = $1 WHERE id = $2', [meetingLink, sessionId]);
                 io.to(sessionId).emit('receive_meeting_link', { meetingLink });
+            } catch (err) {
+                console.error("Socket send_meeting_link error:", err);
             }
         });
 

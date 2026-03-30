@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const skillRoutes = require('./routes/skills');
 const aiRoutes = require('./routes/ai');
 const setupSocket = require('./socket');
+const { initDB } = require('./db');
 
 const app = express();
 const server = http.createServer(app);
@@ -34,6 +35,9 @@ app.get(/.*/, (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+
+initDB().then(() => {
+    server.listen(PORT, () => {
+        console.log(`Server listening on port ${PORT}`);
+    });
 });
