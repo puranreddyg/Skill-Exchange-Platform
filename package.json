@@ -1,0 +1,9 @@
+{
+  "name": "skill-exchange-platform",
+  "version": "1.0.0",
+  "description": "Deployment configuration for Render",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install",
+    "start": "cd backend && node server.js"
+  }
+}

@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: skill-exchange-monolith
+    env: node
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: ~20
+      - key: PORT
+        value: 3001
+      - key: GEMINI_API_KEY
+        value: "REPLACE_WITH_YOUR_AI_KEY"
