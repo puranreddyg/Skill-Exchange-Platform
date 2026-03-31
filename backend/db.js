@@ -78,6 +78,17 @@ const initDB = async () => {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    
+    // Added for presentation: ONE-TIME WIPE of all data
+    await pool.query(`CREATE TABLE IF NOT EXISTS wipe_marker_v1 (id INT PRIMARY KEY)`);
+    const res = await pool.query(`SELECT * FROM wipe_marker_v1`);
+    if (res.rowCount === 0) {
+       console.log('Performing ONE-TIME database wipe for presentation...');
+       await pool.query(`TRUNCATE TABLE reviews, admin_disputes, messages, sessions, skills, users CASCADE;`);
+       await pool.query(`INSERT INTO wipe_marker_v1 (id) VALUES (1)`);
+       console.log('Successfully cleared all data.');
+    }
+
     console.log('Database tables successfully initialized!');
   } catch (error) {
     console.error('Failed to initialize database tables:', error);
