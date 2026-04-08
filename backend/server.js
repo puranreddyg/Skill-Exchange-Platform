@@ -28,6 +28,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/skills', skillRoutes);
 app.use('/api/ai', aiRoutes);
 
+// Keep-alive endpoint
+app.get('/api/ping', (req, res) => {
+    res.status(200).send('pong');
+});
+
 // Serve Static Frontend
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
 app.get(/.*/, (req, res) => {
@@ -39,5 +44,16 @@ const PORT = process.env.PORT || 3001;
 initDB().then(() => {
     server.listen(PORT, () => {
         console.log(`Server listening on port ${PORT}`);
+        
+        // Self-ping to keep Render free tier active
+        const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+        setInterval(async () => {
+            try {
+                const res = await fetch(`${url}/api/ping`);
+                if (res.ok) console.log(`Keep-alive ping successful at ${new Date().toISOString()}`);
+            } catch (err) {
+                console.error('Keep-alive ping failed:', err.message);
+            }
+        }, 14 * 60 * 1000); // Ping every 14 minutes
     });
 });
