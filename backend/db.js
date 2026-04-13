@@ -85,12 +85,12 @@ const initDB = async () => {
     await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS current_level INTEGER DEFAULT 1;`);
     
     // Added for presentation: ONE-TIME WIPE of all data
-    await pool.query(`CREATE TABLE IF NOT EXISTS wipe_marker_v1 (id INT PRIMARY KEY)`);
-    const res = await pool.query(`SELECT * FROM wipe_marker_v1`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS wipe_marker_v2 (id INT PRIMARY KEY)`);
+    const res = await pool.query(`SELECT * FROM wipe_marker_v2`);
     if (res.rowCount === 0) {
        console.log('Performing ONE-TIME database wipe for presentation...');
        await pool.query(`TRUNCATE TABLE reviews, admin_disputes, messages, sessions, skills, users CASCADE;`);
-       await pool.query(`INSERT INTO wipe_marker_v1 (id) VALUES (1)`);
+       await pool.query(`INSERT INTO wipe_marker_v2 (id) VALUES (1)`);
        console.log('Successfully cleared all data.');
     }
 
