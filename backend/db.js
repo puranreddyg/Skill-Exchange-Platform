@@ -79,6 +79,11 @@ const initDB = async () => {
       );
     `);
     
+    // Add new columns for Multi-Level Course features if they don't exist
+    await pool.query(`ALTER TABLE skills ADD COLUMN IF NOT EXISTS total_days INTEGER DEFAULT 1;`);
+    await pool.query(`ALTER TABLE skills ADD COLUMN IF NOT EXISTS syllabus JSONB DEFAULT '[]'::jsonb;`);
+    await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS current_level INTEGER DEFAULT 1;`);
+    
     // Added for presentation: ONE-TIME WIPE of all data
     await pool.query(`CREATE TABLE IF NOT EXISTS wipe_marker_v1 (id INT PRIMARY KEY)`);
     const res = await pool.query(`SELECT * FROM wipe_marker_v1`);

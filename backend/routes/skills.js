@@ -83,7 +83,9 @@ const enrichSkills = async (skillsArray) => {
             totalSessionsCount,
             reliabilityScore,
             qualityScore,
-            reviewCount
+            reviewCount,
+            totalDays: skill.total_days,
+            syllabus: skill.syllabus
         };
     });
 };
@@ -170,7 +172,7 @@ router.get('/my-skills/:userId', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-    const { title, category, description, level, teacherId, teacherName } = req.body;
+    const { title, category, description, level, teacherId, teacherName, totalDays, syllabus } = req.body;
 
     if (!title || !category || !description || !level || !teacherId) {
         return res.status(400).json({ error: 'Missing required skill fields' });
@@ -178,12 +180,14 @@ router.post('/', async (req, res) => {
 
     const creditsPerHour = level === 'Advanced' ? 5 : (level === 'Intermediate' ? 3 : 1);
     const newId = generateId();
+    const days = parseInt(totalDays) || 1;
+    const syll = JSON.stringify(syllabus || []);
 
     try {
         const { rows } = await db.query(
-            `INSERT INTO skills (id, title, category, description, level, teacher_id, teacher_name, credits_per_hour)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [newId, title, category, description, level, teacherId, teacherName, creditsPerHour]
+            `INSERT INTO skills (id, title, category, description, level, teacher_id, teacher_name, credits_per_hour, total_days, syllabus)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+            [newId, title, category, description, level, teacherId, teacherName, creditsPerHour, days, syll]
         );
         
         const enriched = await enrichSkills([rows[0]]);
@@ -279,13 +283,20 @@ const formatSession = (dbSession) => ({
     status: dbSession.status,
     escrowAmount: dbSession.escrow_amount,
     createdAt: dbSession.created_at,
-    meetingLink: dbSession.meeting_link
+    meetingLink: dbSession.meeting_link,
+    currentLevel: dbSession.current_level,
+    syllabus: dbSession.syllabus
 });
 
 router.get('/sessions/session/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
     try {
-        const { rows } = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+        const { rows } = await db.query(`
+            SELECT s.*, sk.syllabus 
+            FROM sessions s 
+            LEFT JOIN skills sk ON s.skill_id = sk.id 
+            WHERE s.id = $1
+        `, [sessionId]);
         if (rows.length === 0) return res.status(404).json({ error: 'Session not found' });
         res.json(formatSession(rows[0]));
     } catch (err) {
@@ -297,7 +308,10 @@ router.get('/sessions/active/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
         const { rows } = await db.query(
-            "SELECT * FROM sessions WHERE (teacher_id = $1 OR learner_id = $1) AND status = 'active'",
+            `SELECT s.*, sk.syllabus 
+             FROM sessions s 
+             LEFT JOIN skills sk ON s.skill_id = sk.id 
+             WHERE (s.teacher_id = $1 OR s.learner_id = $1) AND s.status = 'active'`,
             [userId]
         );
         res.json(rows.map(formatSession));
@@ -310,7 +324,10 @@ router.get('/sessions/history/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
         const { rows } = await db.query(
-            "SELECT * FROM sessions WHERE (teacher_id = $1 OR learner_id = $1) AND (status = 'completed' OR status = 'disputed')",
+            `SELECT s.*, sk.syllabus 
+             FROM sessions s 
+             LEFT JOIN skills sk ON s.skill_id = sk.id 
+             WHERE (s.teacher_id = $1 OR s.learner_id = $1) AND (s.status = 'completed' OR s.status = 'disputed')`,
             [userId]
         );
         res.json(rows.map(formatSession));
@@ -503,6 +520,37 @@ router.post('/sessions/:sessionId/review', async (req, res) => {
             [newId, sessionId, session.teacher_id, learnerId, score, text || '']
         );
         res.status(201).json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+router.post('/sessions/:sessionId/progress', async (req, res) => {
+    const { sessionId } = req.params;
+    
+    try {
+        const { rows } = await db.query(
+            `UPDATE sessions SET current_level = current_level + 1 WHERE id = $1 RETURNING *`,
+            [sessionId]
+        );
+        if (rows.length === 0) return res.status(404).json({ error: 'Session not found' });
+        
+        // Return updated session with syllabus attached by re-querying
+        const { rows: sessionRows } = await db.query(`
+            SELECT s.*, sk.syllabus 
+            FROM sessions s 
+            LEFT JOIN skills sk ON s.skill_id = sk.id 
+            WHERE s.id = $1
+        `, [sessionId]);
+
+        const formatted = formatSession(sessionRows[0]);
+        
+        if (req.io) {
+            req.io.to(sessionId).emit('session_updated', formatted);
+            req.io.to('dashboard').emit('global_session_updated', formatted);
+        }
+        res.json(formatted);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });

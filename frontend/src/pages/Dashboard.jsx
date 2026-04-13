@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { BookOpen, PlusCircle, LogOut, Award, User } from 'lucide-react';
+import { BookOpen, PlusCircle, LogOut, Award, User, Calendar, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function Dashboard() {
     const { currentUser, logout, updateCredits, fetchLatestProfile } = useAuth();
@@ -13,7 +13,7 @@ export default function Dashboard() {
     const [activeSessions, setActiveSessions] = useState([]);
     const [historySessions, setHistorySessions] = useState([]);
     const [showPublishForm, setShowPublishForm] = useState(false);
-    const [newSkill, setNewSkill] = useState({ title: '', category: '', description: '', level: 'Beginner' });
+    const [newSkill, setNewSkill] = useState({ title: '', category: '', description: '', level: 'Beginner', totalDays: 1, syllabus: [] });
     const [maxCredits, setMaxCredits] = useState(5);
     const [searchQuery, setSearchQuery] = useState('');
     const [dualMatchResults, setDualMatchResults] = useState(null);
@@ -21,6 +21,7 @@ export default function Dashboard() {
     // eslint-disable-next-line no-unused-vars
     const [mySkills, setMySkills] = useState([]);
     const [activeTab, setActiveTab] = useState('explore'); // 'explore' or 'teaching'
+    const [expandedSkills, setExpandedSkills] = useState({});
 
     useEffect(() => {
         if (!currentUser) {
@@ -127,7 +128,7 @@ export default function Dashboard() {
             const publishedSkill = await res.json();
             socket.emit('publish_skill', publishedSkill);
             setShowPublishForm(false);
-            setNewSkill({ title: '', category: '', description: '', level: 'Beginner' });
+            setNewSkill({ title: '', category: '', description: '', level: 'Beginner', totalDays: 1, syllabus: [] });
         }
     };
 
@@ -291,12 +292,42 @@ export default function Dashboard() {
                                 <input type="text" placeholder="Skill Title" required className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none w-full" value={newSkill.title} onChange={e => setNewSkill({...newSkill, title: e.target.value})} />
                                 <input type="text" placeholder="Category (e.g. Design)" required className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none w-full" value={newSkill.category} onChange={e => setNewSkill({...newSkill, category: e.target.value})} />
                             </div>
-                            <select className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none w-full" value={newSkill.level} onChange={e => setNewSkill({...newSkill, level: e.target.value})}>
-                                <option value="Beginner">Beginner (1 Credit)</option>
-                                <option value="Intermediate">Intermediate (3 Credits)</option>
-                                <option value="Advanced">Advanced (5 Credits)</option>
-                            </select>
+                            <div className="grid grid-cols-2 gap-4">
+                                <select className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none w-full" value={newSkill.level} onChange={e => setNewSkill({...newSkill, level: e.target.value})}>
+                                    <option value="Beginner">Beginner (1 Credit)</option>
+                                    <option value="Intermediate">Intermediate (3 Credits)</option>
+                                    <option value="Advanced">Advanced (5 Credits)</option>
+                                </select>
+                                <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3">
+                                    <label className="text-sm font-medium text-slate-300 whitespace-nowrap">Total Days:</label>
+                                    <input type="number" min="1" required className="bg-transparent outline-none text-white w-full py-2" value={newSkill.totalDays} onChange={e => setNewSkill({...newSkill, totalDays: parseInt(e.target.value) || 1})} />
+                                </div>
+                            </div>
                             <textarea placeholder="Description" required className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none w-full h-24" value={newSkill.description} onChange={e => setNewSkill({...newSkill, description: e.target.value})}></textarea>
+                            
+                            {/* Syllabus Section */}
+                            <div className="bg-slate-800/50 p-4 rounded-xl border border-indigo-500/20 space-y-3">
+                                <h4 className="font-bold flex justify-between items-center text-sm">
+                                    Course Syllabus
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setNewSkill({...newSkill, syllabus: [...newSkill.syllabus, { levelNumber: newSkill.syllabus.length + 1, topicName: '', scheduledDate: '', scheduledTime: '' }]})}
+                                        className="text-xs bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/40 px-2 py-1 rounded-md transition-colors"
+                                    >
+                                        + Add Level
+                                    </button>
+                                </h4>
+                                {newSkill.syllabus.map((level, idx) => (
+                                    <div key={idx} className="grid grid-cols-12 gap-2 bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                                        <div className="col-span-2 sm:col-span-1 flex items-center justify-center font-bold text-slate-400 bg-slate-800 rounded">{level.levelNumber}</div>
+                                        <input type="text" placeholder="Topic Name" required className="col-span-10 sm:col-span-5 bg-slate-800 text-sm border border-slate-700 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500" value={level.topicName} onChange={e => { const s = [...newSkill.syllabus]; s[idx].topicName = e.target.value; setNewSkill({...newSkill, syllabus: s}); }} />
+                                        <input type="date" required className="col-span-6 sm:col-span-3 bg-slate-800 text-sm border border-slate-700 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500" value={level.scheduledDate} onChange={e => { const s = [...newSkill.syllabus]; s[idx].scheduledDate = e.target.value; setNewSkill({...newSkill, syllabus: s}); }} />
+                                        <input type="time" required className="col-span-4 sm:col-span-2 bg-slate-800 text-sm border border-slate-700 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500" value={level.scheduledTime} onChange={e => { const s = [...newSkill.syllabus]; s[idx].scheduledTime = e.target.value; setNewSkill({...newSkill, syllabus: s}); }} />
+                                        <button type="button" onClick={() => { const s = newSkill.syllabus.filter((_, i) => i !== idx).map((l, i) => ({...l, levelNumber: i + 1})); setNewSkill({...newSkill, syllabus: s}); }} className="col-span-2 sm:col-span-1 text-red-400 hover:text-red-300 font-bold">X</button>
+                                    </div>
+                                ))}
+                            </div>
+
                             <button type="submit" className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-medium py-2 rounded-lg transition-colors">Publish to Feed</button>
                         </form>
                     )}
@@ -327,7 +358,8 @@ export default function Dashboard() {
                                             <h3 className="text-xl font-bold group-hover:text-indigo-300 transition-colors">{skill.title}</h3>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-lg font-bold text-indigo-400 mb-2">{skill.creditsPerHour || 1} <span className="text-xs text-slate-500 block font-normal">Credits/hr</span></div>
+                                            <div className="text-lg font-bold text-indigo-400 mb-1">{skill.creditsPerHour || 1} <span className="text-xs text-slate-500 block font-normal">Credits/hr</span></div>
+                                            <div className="text-sm font-medium text-emerald-400 mb-2">{skill.totalDays || 1} <span className="text-xs text-slate-500 block font-normal">Days</span></div>
                                             {skill.teacherId !== currentUser.id ? (
                                                 <button onClick={() => handleEnroll(skill.id)} className="bg-slate-800 hover:bg-indigo-500 text-white border border-slate-700 hover:border-indigo-500 px-4 py-2 rounded-lg text-sm font-medium transition-all">
                                                     Enroll
@@ -338,6 +370,31 @@ export default function Dashboard() {
                                         </div>
                                     </div>
                                     <p className="text-slate-300 text-sm mb-4 leading-relaxed">{skill.description}</p>
+                                    
+                                    {skill.syllabus && skill.syllabus.length > 0 && (
+                                        <div className="mb-4">
+                                            <button onClick={() => setExpandedSkills(prev => ({...prev, [skill.id]: !prev[skill.id]}))} className="flex items-center justify-between w-full bg-slate-800/80 hover:bg-slate-700/80 text-sm font-medium px-4 py-2 rounded-lg transition-colors border border-slate-700 text-slate-300">
+                                                <span>Course Syllabus ({skill.syllabus.length} Levels)</span>
+                                                {expandedSkills[skill.id] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                            </button>
+                                            {expandedSkills[skill.id] && (
+                                                <div className="mt-2 space-y-2 animate-fade-in-up origin-top">
+                                                    {skill.syllabus.map((lvl, i) => (
+                                                        <div key={i} className="flex flex-col bg-slate-900/50 p-3 rounded-lg border border-indigo-500/10 hover:border-indigo-500/30 transition-colors">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="font-bold text-sm text-indigo-300">Level {lvl.levelNumber}: {lvl.topicName}</span>
+                                                            </div>
+                                                            <div className="flex gap-4 text-xs text-slate-400">
+                                                                <span className="flex items-center gap-1"><Calendar size={12}/>{lvl.scheduledDate}</span>
+                                                                <span className="flex items-center gap-1"><Clock size={12}/>{lvl.scheduledTime}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="flex justify-between items-center text-sm text-slate-400 border-t border-slate-700/50 pt-4 mt-2">
                                         <div className="flex items-center gap-2"><User size={16} /><span>Taught by <strong className="text-white">{skill.teacherName}</strong></span></div>
                                         <div className="font-medium text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1">✨ Match Score: {dynamicScore}%</div>
