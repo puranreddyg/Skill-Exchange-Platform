@@ -174,7 +174,7 @@ export default function Session() {
                             let isPulsing = false;
                             
                             if (lvl.status === 'Completed') {
-                                nodeColor = "bg-emerald-500/10 border-emerald-500/30 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.1)]";
+                                nodeColor = "bg-purple-500/10 border-purple-500/30 text-purple-200 shadow-[0_0_15px_rgba(147,51,234,0.1)]";
                                 icon = <CheckCircle size={16} className="text-emerald-400" />;
                             } else if (lvl.status === 'Active') {
                                 nodeColor = "bg-indigo-500/20 border-indigo-500 text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.2)]";
@@ -317,7 +317,7 @@ export default function Session() {
                                                             onChange={e => setTestPrompt(e.target.value)}
                                                             className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                                                         />
-                                                        <button disabled={!testPrompt.trim()} onClick={() => handleAction('assign_challenge', { prompt: testPrompt })} className="border border-indigo-500 text-indigo-400 hover:bg-indigo-500 hover:text-white disabled:opacity-50 font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                                                        <button disabled={!testPrompt.trim()} onClick={() => handleAction('assign_challenge', { prompt: testPrompt })} className="border border-purple-500 text-purple-400 hover:bg-purple-500 hover:text-white disabled:opacity-50 font-bold py-2 px-4 rounded-lg transition-colors text-sm">
                                                             Conduct Test
                                                         </button>
                                                     </div>

@@ -31,19 +31,19 @@ export default function Dashboard() {
 
         fetch(`/api/skills?userId=${currentUser.id}`)
             .then(res => res.json())
-            .then(data => setSkills(data));
+            .then(data => { if (Array.isArray(data)) setSkills(data); });
 
         fetch(`/api/skills/my-skills/${currentUser.id}`)
             .then(res => res.json())
-            .then(data => setMySkills(data));
+            .then(data => { if (Array.isArray(data)) setMySkills(data); });
 
         fetch(`/api/skills/sessions/active/${currentUser.id}`)
             .then(res => res.json())
-            .then(data => setActiveSessions(data));
+            .then(data => { if (Array.isArray(data)) setActiveSessions(data); });
 
         fetch(`/api/skills/sessions/history/${currentUser.id}`)
             .then(res => res.json())
-            .then(data => setHistorySessions(data));
+            .then(data => { if (Array.isArray(data)) setHistorySessions(data); });
 
         if (socket) {
             socket.emit('join_dashboard');
