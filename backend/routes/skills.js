@@ -598,6 +598,9 @@ router.post('/sessions/:sessionId/level-action', async (req, res) => {
 
         if (action === 'request_next') {
             syllabus[lvlIdx].status = 'Requested Next Level';
+        } else if (action === 'request_reschedule') {
+            syllabus[lvlIdx].status = 'Reschedule Requested';
+            syllabus[lvlIdx].emergencyReason = payload?.emergencyReason || '';
         } else if (action === 'assign_challenge') {
             syllabus[lvlIdx].status = 'Challenge Assigned';
             syllabus[lvlIdx].teacherChallengePrompt = payload?.prompt || '';
@@ -628,6 +631,60 @@ router.post('/sessions/:sessionId/level-action', async (req, res) => {
             const { rows: updatedRows } = await client.query(
                 'UPDATE sessions SET syllabus = $1, current_level = $2 WHERE id = $3 RETURNING *',
                 [JSON.stringify(syllabus), session.current_level, sessionId]
+            );
+            await client.query('COMMIT');
+            
+            const formatted = formatSession(updatedRows[0]);
+            if (req.io) {
+                req.io.to(sessionId).emit('session_updated', formatted);
+                req.io.to('dashboard').emit('global_session_updated', formatted);
+            }
+            res.json(formatted);
+        } catch(e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+router.put('/sessions/:sessionId/bulk-schedule', async (req, res) => {
+    const { sessionId } = req.params;
+    const { updates } = req.body; 
+
+    try {
+        const { rows } = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Session not found' });
+        const session = rows[0];
+        let syllabus = session.syllabus || [];
+        const now = new Date();
+
+        if (Array.isArray(updates)) {
+            updates.forEach(update => {
+                const idx = syllabus.findIndex(l => parseInt(l.levelNumber) === parseInt(update.levelNumber));
+                if (idx !== -1) {
+                    if (update.scheduledDate) syllabus[idx].scheduledDate = update.scheduledDate;
+                    if (update.scheduledTime) syllabus[idx].scheduledTime = update.scheduledTime;
+                    
+                    if (syllabus[idx].status === 'Reschedule Requested') {
+                        const scheduled = new Date(`${syllabus[idx].scheduledDate}T${syllabus[idx].scheduledTime || '00:00'}`);
+                        syllabus[idx].status = scheduled > now ? 'Upcoming' : 'Active';
+                    }
+                }
+            });
+        }
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            const { rows: updatedRows } = await client.query(
+                'UPDATE sessions SET syllabus = $1 WHERE id = $2 RETURNING *',
+                [JSON.stringify(syllabus), sessionId]
             );
             await client.query('COMMIT');
             

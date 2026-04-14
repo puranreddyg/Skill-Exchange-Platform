@@ -444,28 +444,30 @@ export default function Dashboard() {
                             teachingSessions.sort((a, b) => {
                                 const aLvl = a.syllabus?.[a.currentLevel - 1];
                                 const bLvl = b.syllabus?.[b.currentLevel - 1];
-                                const aActionable = aLvl?.status === 'Requested Next Level' ? 1 : 0;
-                                const bActionable = bLvl?.status === 'Requested Next Level' ? 1 : 0;
+                                const aActionable = (aLvl?.status === 'Requested Next Level' || aLvl?.status === 'Reschedule Requested') ? 1 : 0;
+                                const bActionable = (bLvl?.status === 'Requested Next Level' || bLvl?.status === 'Reschedule Requested') ? 1 : 0;
                                 return bActionable - aActionable;
                             });
 
                             return teachingSessions.map(session => {
                                 const activeLevel = session.syllabus?.[session.currentLevel - 1];
-                                const isActionable = activeLevel?.status === 'Requested Next Level';
+                                const isActionable = activeLevel?.status === 'Requested Next Level' || activeLevel?.status === 'Reschedule Requested';
+                                const isEmergency = activeLevel?.status === 'Reschedule Requested';
                                 const isWaiting = activeLevel?.status === 'Challenge Assigned';
                                 const isStudying = activeLevel?.status === 'Active' || activeLevel?.status === 'Upcoming';
 
                                 return (
                                     <div key={session.id} className={`p-6 rounded-2xl border-2 flex flex-col md:flex-row justify-between items-center group transition-all duration-300 ${isActionable ? 'bg-amber-500/10 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'bg-slate-800/80 border-slate-700'}`}>
                                         <div className="flex-1 w-full relative">
-                                            {isActionable && <div className="absolute -top-3 -left-2 flex items-center gap-1 bg-amber-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg animate-pulse"><Award size={12}/> ACTION REQUIRED</div>}
+                                            {isActionable && <div className="absolute -top-3 -left-2 flex items-center gap-1 bg-amber-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg animate-pulse"><Award size={12}/> {isEmergency ? 'EMERGENCY' : 'ACTION REQUIRED'}</div>}
                                             <div className="flex items-center gap-2 mb-2 mt-2">
                                                 <span className="text-xs font-bold px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded-md uppercase tracking-wider">{session.skillTitle}</span>
                                                 <span className="text-xs text-slate-400 bg-slate-900 border border-slate-700 px-2 py-1 rounded-md">Lvl {session.currentLevel} / {session.syllabus?.length}</span>
                                             </div>
                                             <h3 className="text-lg font-bold text-white mb-1">Student: {session.learnerName}</h3>
                                             <p className={`text-sm font-medium ${isActionable ? 'text-amber-400' : isWaiting ? 'text-purple-400' : 'text-slate-400'}`}>
-                                                {isActionable && 'Student requested progression or submitted challenge!'}
+                                                {isEmergency && 'Student requested an emergency reschedule!'}
+                                                {!isEmergency && isActionable && 'Student requested progression or submitted challenge!'}
                                                 {isWaiting && 'Awaiting student to complete your custom challenge...'}
                                                 {isStudying && 'Student is currently studying the module.'}
                                             </p>
