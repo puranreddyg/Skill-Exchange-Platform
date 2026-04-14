@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { Send, ArrowLeft, CheckCircle, ChevronRight } from 'lucide-react';
+import { Send, ArrowLeft, CheckCircle, Clock, AlertTriangle, ChevronRight } from 'lucide-react';
 import ReviewModal from '../components/ReviewModal';
 
 export default function Session() {
@@ -11,94 +11,109 @@ export default function Session() {
     const socket = useSocket();
     const navigate = useNavigate();
     
-    const [messages, setMessages] = useState([]);
-    const [newMessage, setNewMessage] = useState('');
     const [sessionDetails, setSessionDetails] = useState(null);
     const [showReviewModal, setShowReviewModal] = useState(false);
-    const [linkInput, setLinkInput] = useState('');
     
+    const [challengeSubmission, setChallengeSubmission] = useState('');
+    const [testPrompt, setTestPrompt] = useState('');
+    const [timeRemaining, setTimeRemaining] = useState('');
+
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef(null);
 
     useEffect(() => {
         if (!currentUser) { navigate('/'); return; }
 
-        fetch(`/api/skills/sessions/session/${sessionId}`)
-            .then(res => {
+        const fetchSession = async () => {
+            try {
+                const res = await fetch(`/api/skills/sessions/session/${sessionId}`);
                 if (!res.ok) throw new Error('Not found');
-                return res.json();
-            })
-            .then(session => {
-                setSessionDetails(session);
-            })
-            .catch(err => {
-                console.error("Could not fetch session:", err);
+                const data = await res.json();
+                setSessionDetails(data);
+            } catch (err) {
                 navigate('/dashboard');
-            });
+            }
+        };
+
+        fetchSession();
 
         fetch(`/api/skills/sessions/${sessionId}/messages`)
             .then(res => res.json())
-            .then(data => {
-                setMessages(data);
-            })
-            .catch(err => console.error("Could not fetch messages:", err));
+            .then(data => setMessages(data))
+            .catch(err => console.error("Could not fetch messages", err));
 
         if (socket) {
             socket.emit('join_session', { sessionId });
-
-            const handleReceiveMessage = (message) => {
-                setMessages(prev => [...prev, message]);
-            };
-            const handleReceiveLink = ({ meetingLink }) => {
-                setSessionDetails(prev => ({ ...prev, meetingLink }));
-            };
-            const handleSessionCompleted = () => {
-                setSessionDetails(prev => ({ ...prev, status: 'completed' }));
+            socket.on('receive_message', (msg) => setMessages(prev => [...prev, msg]));
+            socket.on('session_updated', (updated) => setSessionDetails(updated));
+            socket.on('session_completed', (updated) => {
+                setSessionDetails(updated);
                 fetchLatestProfile();
-            };
-            const handleSessionUpdated = (updatedSession) => {
-                setSessionDetails(updatedSession);
-            };
+            });
 
-            socket.on('receive_message', handleReceiveMessage);
-            socket.on('receive_meeting_link', handleReceiveLink);
-            socket.on('session_completed', handleSessionCompleted);
-            socket.on('session_updated', handleSessionUpdated);
-            
-            return () => { 
-                socket.off('receive_message', handleReceiveMessage);
-                socket.off('receive_meeting_link', handleReceiveLink);
-                socket.off('session_completed', handleSessionCompleted);
-                socket.off('session_updated', handleSessionUpdated);
+            return () => {
+                socket.off('receive_message');
+                socket.off('session_updated');
+                socket.off('session_completed');
             };
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentUser, socket, sessionId, navigate]);
+    }, [currentUser, socket, sessionId, navigate, fetchLatestProfile]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const sendMessage = (e) => {
-        e.preventDefault();
-        if (!newMessage.trim() || !socket) return;
-        
-        socket.emit('send_message', {
-            sessionId,
-            senderId: currentUser.id,
-            senderName: currentUser.name,
-            text: newMessage
+    useEffect(() => {
+        // Countdown timer for Upcoming levels
+        let interval;
+        if (sessionDetails && sessionDetails.syllabus) {
+            const activeLevel = sessionDetails.syllabus[sessionDetails.currentLevel - 1];
+            if (activeLevel && activeLevel.status === 'Upcoming') {
+                const checkTime = () => {
+                    const scheduled = new Date(`${activeLevel.scheduledDate}T${activeLevel.scheduledTime || '00:00'}`);
+                    const now = new Date();
+                    const diff = scheduled - now;
+                    if (diff <= 0) {
+                        // Reload or trigger update
+                        fetch(`/api/skills/sessions/session/${sessionId}`).then(res => res.json()).then(setSessionDetails);
+                        clearInterval(interval);
+                        setTimeRemaining('00:00:00');
+                    } else {
+                        const h = Math.floor(diff / (1000 * 60 * 60));
+                        const m = Math.floor((diff / 1000 / 60) % 60);
+                        const s = Math.floor((diff / 1000) % 60);
+                        setTimeRemaining(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+                    }
+                };
+                checkTime();
+                interval = setInterval(checkTime, 1000);
+            }
+        }
+        return () => clearInterval(interval);
+    }, [sessionDetails, sessionId]);
+
+    const handleAction = async (action, payload = {}) => {
+        const activeLevel = sessionDetails.syllabus[sessionDetails.currentLevel - 1];
+        if (!activeLevel) return;
+
+        const res = await fetch(`/api/skills/sessions/${sessionId}/level-action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ levelNumber: activeLevel.levelNumber, action, payload })
         });
         
-        setNewMessage('');
+        if (res.ok) {
+            const updated = await res.json();
+            setSessionDetails(updated);
+            setChallengeSubmission('');
+            setTestPrompt('');
+        }
     };
 
     const handleCompleteSession = async () => {
-        if (!window.confirm("Are you sure you want to complete this session? Your credits will be released to the teacher.")) return;
-        
-        const res = await fetch(`/api/skills/sessions/${sessionId}/complete`, {
-            method: 'POST'
-        });
-        
+        if (!window.confirm("Complete the course and release credits to teacher?")) return;
+        const res = await fetch(`/api/skills/sessions/${sessionId}/complete`, { method: 'POST' });
         if (res.ok) {
             setSessionDetails(prev => ({ ...prev, status: 'completed' }));
             setShowReviewModal(true);
@@ -106,174 +121,260 @@ export default function Session() {
         }
     };
 
-    const handleDispute = async () => {
-        const reason = window.prompt("Please provide a brief reason for the dispute:");
-        if (!reason) return;
-
-        const res = await fetch(`/api/skills/sessions/${sessionId}/dispute`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reason })
-        });
-        
-        if (res.ok) {
-            const data = await res.json();
-            setSessionDetails(prev => ({ ...prev, status: 'disputed' }));
-            alert(`Dispute Resolved by AI\n\nResolution: ${data.message}\nReasoning: ${data.disputeRecord?.reasoning || 'No details.'}`);
-            fetchLatestProfile();
-        }
-    };
-
-    const shareLink = () => {
-        if (!linkInput.trim() || !socket) return;
-        socket.emit('send_meeting_link', { sessionId, meetingLink: linkInput.trim() });
-        setLinkInput('');
-    };
-
-    const handleAdvanceLevel = async () => {
-        const res = await fetch(`/api/skills/sessions/${sessionId}/progress`, {
-            method: 'POST'
-        });
-        if (res.ok) {
-            const data = await res.json();
-            setSessionDetails(data);
-        }
+    const sendMessage = (e) => {
+        e.preventDefault();
+        if (!newMessage.trim() || !socket) return;
+        socket.emit('send_message', { sessionId, senderId: currentUser.id, senderName: currentUser.name, text: newMessage });
+        setNewMessage('');
     };
 
     if (!sessionDetails) return null;
 
     const isTeacher = sessionDetails.teacherId === currentUser.id;
+    const syllabus = sessionDetails.syllabus || [];
+    const activeLevelIndex = (sessionDetails.currentLevel || 1) - 1;
+    const activeLevel = syllabus[activeLevelIndex];
+    const isSessionFinished = sessionDetails.status === 'completed' || sessionDetails.status === 'disputed';
 
     return (
-        <div className="min-h-screen flex flex-col p-4 max-w-5xl mx-auto h-screen">
-            <header className="flex justify-between items-center bg-slate-800/80 backdrop-blur-md p-4 rounded-t-2xl border-b border-white/10 shrink-0">
+        <div className="min-h-screen p-4 max-w-7xl mx-auto flex flex-col h-screen">
+            <header className="flex justify-between items-center bg-slate-800/80 backdrop-blur-md p-4 rounded-2xl border border-white/10 shrink-0 mb-4 shadow-xl">
                 <div className="flex items-center gap-4">
                     <button onClick={() => navigate('/dashboard')} className="text-slate-400 hover:text-white transition-colors">
                         <ArrowLeft size={24} />
                     </button>
                     <div>
-                        <h1 className="text-xl font-bold">{sessionDetails.skillTitle}</h1>
-                        <p className="text-slate-400 text-sm">
-                            {isTeacher ? 'You are teaching' : `Learning from ${sessionDetails.teacherName}`}
-                            {sessionDetails.status === 'completed' && " • Completed"}
-                            {sessionDetails.status === 'disputed' && " • Disputed"}
+                        <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-indigo-400 bg-clip-text text-transparent">
+                            {sessionDetails.skillTitle}
+                        </h1>
+                        <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold mt-1">
+                            {isTeacher ? '1-ON-1 MENTORSHIP (TEACHING)' : `LEARNING FROM ${sessionDetails.teacherName}`}
+                            {isSessionFinished && ` • ${sessionDetails.status.toUpperCase()}`}
                         </p>
                     </div>
                 </div>
+                {!isTeacher && !isSessionFinished && activeLevelIndex >= syllabus.length && (
+                    <button onClick={handleCompleteSession} className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white px-4 py-2 rounded-lg font-bold transition-all text-sm flex items-center gap-2">
+                        <CheckCircle size={16} /> Finish Course & Release Credits
+                    </button>
+                )}
             </header>
 
-            {/* Pinned Meeting Link */}
-            {sessionDetails.meetingLink && (
-                <div className="bg-indigo-500/20 text-indigo-300 p-2 text-center text-sm font-medium border-b border-indigo-500/30 shrink-0">
-                    Live Session Link: <a href={sessionDetails.meetingLink} target="_blank" rel="noreferrer" className="underline hover:text-indigo-200">{sessionDetails.meetingLink}</a>
-                </div>
-            )}
-
-            {/* Progress Tracker */}
-            {sessionDetails.syllabus && sessionDetails.syllabus.length > 0 && (
-                <div className="bg-slate-800/80 p-6 border-b border-white/10 shrink-0 shadow-lg">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-bold text-slate-300">Course Journey Tracker</h3>
-                        <div className="text-sm font-medium bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-full border border-indigo-500/30">
-                            Current Level: {sessionDetails.currentLevel || 1} of {sessionDetails.syllabus.length}
-                        </div>
-                    </div>
-                    <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
-                        {sessionDetails.syllabus.map((lvl, i) => {
-                            const isCompleted = (sessionDetails.currentLevel || 1) > lvl.levelNumber;
-                            const isActive = (sessionDetails.currentLevel || 1) === lvl.levelNumber;
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0 overflow-hidden">
+                {/* LEFT COLUMN: Skill Tree */}
+                <div className="lg:col-span-1 bg-slate-800/50 backdrop-blur-md border border-white/5 rounded-2xl p-6 flex flex-col overflow-y-auto custom-scrollbar">
+                    <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-slate-200">
+                        Course Progression
+                    </h2>
+                    
+                    <div className="space-y-4 relative">
+                        {syllabus.map((lvl, idx) => {
+                            let nodeColor = "bg-slate-800 border-slate-700 text-slate-500";
+                            let icon = <div className="w-3 h-3 rounded-full bg-slate-600" />;
+                            let isPulsing = false;
                             
+                            if (lvl.status === 'Completed') {
+                                nodeColor = "bg-emerald-500/10 border-emerald-500/30 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.1)]";
+                                icon = <CheckCircle size={16} className="text-emerald-400" />;
+                            } else if (lvl.status === 'Active') {
+                                nodeColor = "bg-indigo-500/20 border-indigo-500 text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.2)]";
+                                isPulsing = true;
+                                icon = <div className="w-3 h-3 rounded-full bg-indigo-400" />;
+                            } else if (lvl.status === 'Upcoming') {
+                                nodeColor = "bg-purple-500/10 border-purple-500/30 text-purple-200";
+                                isPulsing = true;
+                                icon = <Clock size={16} className="text-purple-400" />;
+                            } else if (lvl.status === 'Requested Next Level' || lvl.status === 'Challenge Assigned') {
+                                nodeColor = "bg-amber-500/10 border-amber-500/50 text-amber-100";
+                                icon = <AlertTriangle size={16} className="text-amber-400" />;
+                            }
+
                             return (
-                                <div key={i} className={`flex flex-col min-w-[220px] p-4 rounded-xl border-2 transition-all duration-300 snap-center ${isCompleted ? 'bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : isActive ? 'bg-indigo-500/20 border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.2)]' : 'bg-slate-900/80 border-slate-700 opacity-60'}`}>
-                                    <div className="flex justify-between items-start mb-3">
-                                        <span className={`text-xs font-bold px-2 py-1 rounded uppercase tracking-wider ${isCompleted ? 'bg-emerald-500 text-black' : isActive ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                                            Level {lvl.levelNumber}
-                                        </span>
-                                        {isCompleted && <CheckCircle size={16} className="text-emerald-500" />}
+                                <div key={idx} className="relative flex gap-4">
+                                    {/* Tree Line connecting nodes */}
+                                    {idx !== syllabus.length - 1 && (
+                                        <div className="absolute top-8 left-3.5 w-0.5 h-full bg-slate-700/50 -z-10" />
+                                    )}
+                                    <div className={`mt-1.5 w-7 h-7 shrink-0 rounded-full border-2 flex items-center justify-center bg-slate-900 ${lvl.status === 'Completed' ? 'border-emerald-500' : (lvl.status === 'Active' || lvl.status === 'Upcoming' ? 'border-indigo-500' : 'border-slate-700')}`}>
+                                        {icon}
                                     </div>
-                                    <h4 className={`font-bold text-[15px] mb-3 leading-tight ${isActive ? 'text-indigo-100' : 'text-slate-300'}`}>{lvl.topicName}</h4>
-                                    <div className="mt-auto space-y-1">
-                                        <p className="text-xs text-slate-400 flex items-center gap-2"><span className="text-base">📅</span> {lvl.scheduledDate}</p>
-                                        <p className="text-xs text-slate-400 flex items-center gap-2"><span className="text-base">⏰</span> {lvl.scheduledTime}</p>
+                                    <div className={`flex-1 p-4 rounded-xl border ${nodeColor} ${isPulsing && lvl.status === 'Active' ? 'animate-pulse-navy' : ''} ${isPulsing && lvl.status === 'Upcoming' ? 'animate-pulse-purple' : ''} transition-all duration-300`}>
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Level {lvl.levelNumber}</span>
+                                            <span className="text-[10px] font-mono opacity-60 bg-black/20 px-1.5 py-0.5 rounded">{lvl.status}</span>
+                                        </div>
+                                        <h4 className="font-bold text-sm mb-2">{lvl.topicName}</h4>
+                                        <div className="text-xs opacity-60 flex items-center gap-2">
+                                            {lvl.scheduledDate} @ {lvl.scheduledTime}
+                                        </div>
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
-                    {isTeacher && sessionDetails.status === 'active' && sessionDetails.currentLevel < sessionDetails.syllabus.length && (
-                        <div className="mt-4 flex justify-end">
-                            <button onClick={handleAdvanceLevel} className="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(99,102,241,0.3)] transition-all active:scale-95 hover:-translate-y-0.5">
-                                Advance to Next Level <ChevronRight size={18} />
-                            </button>
-                        </div>
-                    )}
                 </div>
-            )}
 
-            {/* Session Control Panel (Active Sessions Only) */}
-            {sessionDetails.status === 'active' && (
-                <div className="bg-slate-800 border-b border-white/10 p-3 flex shrink-0 justify-between items-center">
-                    {isTeacher ? (
-                        <div className="flex gap-2 w-full max-w-md">
+                {/* RIGHT COLUMN: Action Panel & Chat */}
+                <div className="lg:col-span-2 flex flex-col gap-6 min-h-0">
+                    
+                    {/* The Action Panel */}
+                    <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl border border-indigo-500/20 p-6 flex-shrink-0 shadow-2xl relative overflow-hidden">
+                        {/* Elegant background flare */}
+                        <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                        
+                        {!activeLevel ? (
+                            <div className="text-center p-8">
+                                <CheckCircle size={48} className="text-emerald-500 mx-auto mb-4" />
+                                <h2 className="text-xl font-bold text-emerald-400 mb-2">All Levels Completed!</h2>
+                                <p className="text-slate-400">The syllabus has been fully executed.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <h3 className="text-xs uppercase tracking-wide text-indigo-400 font-bold mb-1">Current Focus</h3>
+                                <h2 className="text-2xl font-bold text-white mb-6">Level {activeLevel.levelNumber}: {activeLevel.topicName}</h2>
+                                
+                                {/* STUDENT DYNAMIC STATE */}
+                                {!isTeacher && (
+                                    <div className="space-y-4">
+                                        {activeLevel.status === 'Upcoming' && (
+                                            <div className="bg-slate-900/50 border border-purple-500/30 p-6 rounded-xl flex flex-col items-center justify-center text-center">
+                                                <Clock size={32} className="text-purple-400 mb-3" />
+                                                <p className="text-purple-200 font-medium mb-2">This module unlocks at scheduled time</p>
+                                                <div className="text-3xl font-mono text-white font-bold tracking-widest">{timeRemaining}</div>
+                                            </div>
+                                        )}
+                                        {activeLevel.status === 'Active' && (
+                                            <div className="bg-indigo-500/10 border border-indigo-500/30 p-6 rounded-xl">
+                                                <p className="text-slate-300 mb-6">You are actively working on this level. When you feel you have mastered the topic, request progression.</p>
+                                                <button onClick={() => handleAction('request_next')} className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-[0_0_15px_rgba(99,102,241,0.4)] active:scale-95">
+                                                    I'm Ready for the Next Level
+                                                </button>
+                                            </div>
+                                        )}
+                                        {activeLevel.status === 'Requested Next Level' && (
+                                            <div className="bg-slate-700/30 border border-slate-600 p-6 rounded-xl text-center">
+                                                <div className="animate-pulse-navy w-12 h-12 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin mx-auto mb-4" />
+                                                <p className="text-slate-300 font-medium">Awaiting Teacher Review...</p>
+                                                <p className="text-sm text-slate-500 mt-2">Your mentor must approve your progression or assign a challenge test.</p>
+                                            </div>
+                                        )}
+                                        {activeLevel.status === 'Challenge Assigned' && (
+                                            <div className="bg-amber-500/10 border border-amber-500/50 p-6 rounded-xl">
+                                                <h4 className="font-bold text-amber-400 flex items-center gap-2 mb-3">
+                                                    <AlertTriangle size={18} /> Challenge Test Assigned
+                                                </h4>
+                                                <div className="bg-slate-900 p-4 rounded-lg text-slate-300 text-sm mb-4 border border-slate-700 border-l-4 border-l-amber-500">
+                                                    {activeLevel.teacherChallengePrompt}
+                                                </div>
+                                                <textarea 
+                                                    value={challengeSubmission}
+                                                    onChange={e => setChallengeSubmission(e.target.value)}
+                                                    placeholder="Type your answer or provide a link to your work..."
+                                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-amber-500 h-24 mb-3"
+                                                />
+                                                <button disabled={!challengeSubmission.trim()} onClick={() => handleAction('submit_challenge', { submission: challengeSubmission })} className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-2.5 px-4 rounded-xl transition-all">
+                                                    Submit Answer
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* TEACHER DYNAMIC STATE */}
+                                {isTeacher && (
+                                    <div className="space-y-4">
+                                        {activeLevel.status === 'Upcoming' && (
+                                            <div className="p-4 bg-slate-900/50 rounded-xl text-slate-400 text-sm flex items-center gap-2 border border-slate-700">
+                                                <Clock size={16} /> Student is in waiting room. Unlocks automatically.
+                                            </div>
+                                        )}
+                                        {activeLevel.status === 'Active' && (
+                                            <div className="p-4 bg-slate-900/50 rounded-xl text-slate-400 text-sm border border-slate-700">
+                                                Student is currently studying this module. Waiting for them to request the next level.
+                                            </div>
+                                        )}
+                                        {activeLevel.status === 'Requested Next Level' && (
+                                            <div className="bg-indigo-500/10 border border-indigo-500/30 p-5 rounded-xl space-y-4">
+                                                <p className="text-white font-medium">Student has requested to proceed to the next module.</p>
+                                                {activeLevel.studentSubmission && (
+                                                    <div className="bg-slate-900 p-3 rounded text-sm text-slate-300 border border-slate-700">
+                                                        <strong className="text-slate-500 block mb-1">Student Answer:</strong>
+                                                        {activeLevel.studentSubmission}
+                                                    </div>
+                                                )}
+                                                <div className="flex gap-3">
+                                                    <button onClick={() => handleAction('approve')} className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-2 px-4 rounded-xl transition-all">
+                                                        Approve Progression
+                                                    </button>
+                                                </div>
+                                                <div className="mt-4 pt-4 border-t border-slate-700/50">
+                                                    <h4 className="text-sm font-bold text-slate-400 mb-2">Or require a test before approving:</h4>
+                                                    <div className="flex gap-2">
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="Type a custom task..." 
+                                                            value={testPrompt}
+                                                            onChange={e => setTestPrompt(e.target.value)}
+                                                            className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                                        />
+                                                        <button disabled={!testPrompt.trim()} onClick={() => handleAction('assign_challenge', { prompt: testPrompt })} className="border border-indigo-500 text-indigo-400 hover:bg-indigo-500 hover:text-white disabled:opacity-50 font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                                                            Conduct Test
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {activeLevel.status === 'Challenge Assigned' && (
+                                            <div className="bg-slate-900/50 border border-amber-500/30 p-5 rounded-xl text-sm">
+                                                <AlertTriangle size={16} className="text-amber-500 mb-2" />
+                                                <p className="text-amber-100 mb-2">You assigned a challenge:</p>
+                                                <div className="bg-slate-800 p-2 rounded text-slate-300 italic mb-2">"{activeLevel.teacherChallengePrompt}"</div>
+                                                <p className="text-slate-400">Waiting for student to submit their answer...</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+
+                    {/* Chat Box below Action Panel */}
+                    <div className="flex-1 bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/5 flex flex-col overflow-hidden min-h-[300px]">
+                        <div className="p-3 bg-slate-800 border-b border-slate-700 font-bold text-sm text-slate-300">Live Mentorship Chat</div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                            {messages.length === 0 ? (
+                                <div className="text-center text-slate-500 mt-10 text-sm">No messages yet. Say hello!</div>
+                            ) : (
+                                messages.map((msg, idx) => {
+                                    const isMe = msg.senderId === currentUser.id;
+                                    return (
+                                        <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                            <span className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">{isMe ? 'You' : msg.senderName}</span>
+                                            <div className={`max-w-[85%] px-4 py-2 text-sm ${isMe ? 'bg-indigo-500 text-white rounded-2xl rounded-tr-sm' : 'bg-slate-700 text-slate-100 rounded-2xl rounded-tl-sm'}`}>
+                                                {msg.text}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+                        <form onSubmit={sendMessage} className="p-3 border-t border-slate-700 bg-slate-800 flex gap-2">
                             <input 
                                 type="text" 
-                                placeholder="Add Meeting Link (Zoom/Meet)" 
-                                value={linkInput} 
-                                onChange={(e) => setLinkInput(e.target.value)} 
-                                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-white text-sm"
+                                placeholder="Message your mentor..."
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 text-white"
+                                value={newMessage}
+                                onChange={(e) => setNewMessage(e.target.value)}
                             />
-                            <button onClick={shareLink} className="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg transition-colors text-sm font-medium whitespace-nowrap">
-                                Share Link
+                            <button type="submit" disabled={!newMessage.trim()} className="bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-700 text-white px-4 rounded-xl transition-colors">
+                                <Send size={16} />
                             </button>
-                        </div>
-                    ) : (
-                        <div className="flex gap-3 justify-end w-full">
-                            <button onClick={handleDispute} className="text-red-400 bg-red-400/10 hover:bg-red-400/20 border border-red-500/20 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium">
-                                Dispute Session
-                            </button>
-                            <button onClick={handleCompleteSession} className="bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded-lg flex items-center gap-2 transition-colors text-sm font-medium shadow-[0_0_15px_rgba(34,197,94,0.3)]">
-                                <CheckCircle size={16} /> Complete & Release Credits
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-900/50 backdrop-blur-sm custom-scrollbar">
-                {messages.length === 0 ? (
-                    <div className="text-center text-slate-500 mt-20">
-                        No messages yet. Start the conversation!
+                        </form>
                     </div>
-                ) : (
-                    messages.map((msg, idx) => {
-                        const isMe = msg.senderId === currentUser.id;
-                        return (
-                            <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                <span className="text-xs text-slate-500 mb-1 ml-1 mr-1">{isMe ? 'You' : msg.senderName}</span>
-                                <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMe ? 'bg-indigo-500 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-100 rounded-tl-sm border border-slate-700'}`}>
-                                    {msg.text}
-                                </div>
-                            </div>
-                        );
-                    })
-                )}
-                <div ref={messagesEndRef} />
-            </div>
 
-            <footer className="shrink-0 bg-slate-800/80 backdrop-blur-md p-4 rounded-b-2xl border-t border-white/10">
-                <form onSubmit={sendMessage} className="flex gap-2">
-                    <input 
-                        type="text" 
-                        placeholder="Type a message..."
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                    />
-                    <button type="submit" disabled={!newMessage.trim()} className="bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-700 disabled:text-slate-500 text-white p-3 rounded-xl transition-colors flex items-center justify-center">
-                        <Send size={20} />
-                    </button>
-                </form>
-            </footer>
+                </div>
+            </div>
 
             {showReviewModal && <ReviewModal sessionId={sessionId} onClose={() => navigate('/dashboard')} />}
         </div>

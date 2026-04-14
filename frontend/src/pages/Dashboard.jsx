@@ -116,6 +116,21 @@ export default function Dashboard() {
 
     const handlePublish = async (e) => {
         e.preventDefault();
+        
+        if (newSkill.syllabus.length > 0) {
+            const validDates = newSkill.syllabus.map(l => l.scheduledDate).filter(Boolean).sort();
+            if (validDates.length > 0) {
+                const startD = new Date(validDates[0]);
+                const maxPicked = validDates[validDates.length - 1];
+                const maxD = new Date(startD);
+                maxD.setDate(maxD.getDate() + (newSkill.totalDays > 0 ? newSkill.totalDays - 1 : 0));
+                if (new Date(maxPicked) > maxD) {
+                    alert(`Dates in syllabus must fall within the ${newSkill.totalDays}-day duration from your earliest scheduled date.`);
+                    return;
+                }
+            }
+        }
+        
         const skillData = { ...newSkill, teacherId: currentUser.id, teacherName: currentUser.name };
 
         const res = await fetch('/api/skills', {
@@ -162,6 +177,16 @@ export default function Dashboard() {
     };
 
     if (!currentUser) return null;
+
+    const todayStr = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    const validSyllabusDates = newSkill.syllabus.map(l => l.scheduledDate).filter(Boolean).sort();
+    const startTimelineDateStr = validSyllabusDates.length > 0 ? validSyllabusDates[0] : null;
+    let maxDateStr = undefined;
+    if (startTimelineDateStr) {
+        const d = new Date(startTimelineDateStr);
+        d.setDate(d.getDate() + (newSkill.totalDays > 0 ? newSkill.totalDays - 1 : 0));
+        maxDateStr = d.toISOString().split('T')[0];
+    }
 
     return (
         <div className="min-h-screen p-8 max-w-7xl mx-auto relative">
@@ -321,7 +346,7 @@ export default function Dashboard() {
                                     <div key={idx} className="grid grid-cols-12 gap-2 bg-slate-900/50 p-3 rounded-lg border border-slate-700">
                                         <div className="col-span-2 sm:col-span-1 flex items-center justify-center font-bold text-slate-400 bg-slate-800 rounded">{level.levelNumber}</div>
                                         <input type="text" placeholder="Topic Name" required className="col-span-10 sm:col-span-5 bg-slate-800 text-sm border border-slate-700 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500" value={level.topicName} onChange={e => { const s = [...newSkill.syllabus]; s[idx].topicName = e.target.value; setNewSkill({...newSkill, syllabus: s}); }} />
-                                        <input type="date" required className="col-span-6 sm:col-span-3 bg-slate-800 text-sm border border-slate-700 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500" value={level.scheduledDate} onChange={e => { const s = [...newSkill.syllabus]; s[idx].scheduledDate = e.target.value; setNewSkill({...newSkill, syllabus: s}); }} />
+                                        <input type="date" required min={todayStr} max={maxDateStr} className="col-span-6 sm:col-span-3 bg-slate-800 text-sm border border-slate-700 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500" value={level.scheduledDate} onChange={e => { const s = [...newSkill.syllabus]; s[idx].scheduledDate = e.target.value; setNewSkill({...newSkill, syllabus: s}); }} />
                                         <input type="time" required className="col-span-4 sm:col-span-2 bg-slate-800 text-sm border border-slate-700 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500" value={level.scheduledTime} onChange={e => { const s = [...newSkill.syllabus]; s[idx].scheduledTime = e.target.value; setNewSkill({...newSkill, syllabus: s}); }} />
                                         <button type="button" onClick={() => { const s = newSkill.syllabus.filter((_, i) => i !== idx).map((l, i) => ({...l, levelNumber: i + 1})); setNewSkill({...newSkill, syllabus: s}); }} className="col-span-2 sm:col-span-1 text-red-400 hover:text-red-300 font-bold">X</button>
                                     </div>
@@ -411,23 +436,48 @@ export default function Dashboard() {
                             const teachingSessions = activeSessions.filter(s => s.teacherId === currentUser.id);
                             if (teachingSessions.length === 0) return (
                                 <div className="text-center p-12 glass rounded-2xl border-dashed border-slate-600 border-2">
-                                    <p className="text-slate-400">You don't have any active teaching sessions right now.</p>
+                                    <p className="text-slate-400">You don't have any active students right now.</p>
                                 </div>
                             );
-                            return teachingSessions.map(session => (
-                                <div key={session.id} className="glass p-6 rounded-2xl border border-slate-700 flex justify-between items-center group">
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className={`text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider ${session.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-orange-500/20 text-orange-400'}`}>{session.status === 'active' ? 'ACTIVE' : 'DISPUTED'}</span>
+                            
+                            // Sort so that actionable sessions are at the top
+                            teachingSessions.sort((a, b) => {
+                                const aLvl = a.syllabus?.[a.currentLevel - 1];
+                                const bLvl = b.syllabus?.[b.currentLevel - 1];
+                                const aActionable = aLvl?.status === 'Requested Next Level' ? 1 : 0;
+                                const bActionable = bLvl?.status === 'Requested Next Level' ? 1 : 0;
+                                return bActionable - aActionable;
+                            });
+
+                            return teachingSessions.map(session => {
+                                const activeLevel = session.syllabus?.[session.currentLevel - 1];
+                                const isActionable = activeLevel?.status === 'Requested Next Level';
+                                const isWaiting = activeLevel?.status === 'Challenge Assigned';
+                                const isStudying = activeLevel?.status === 'Active' || activeLevel?.status === 'Upcoming';
+
+                                return (
+                                    <div key={session.id} className={`p-6 rounded-2xl border-2 flex flex-col md:flex-row justify-between items-center group transition-all duration-300 ${isActionable ? 'bg-amber-500/10 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'bg-slate-800/80 border-slate-700'}`}>
+                                        <div className="flex-1 w-full relative">
+                                            {isActionable && <div className="absolute -top-3 -left-2 flex items-center gap-1 bg-amber-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg animate-pulse"><Award size={12}/> ACTION REQUIRED</div>}
+                                            <div className="flex items-center gap-2 mb-2 mt-2">
+                                                <span className="text-xs font-bold px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded-md uppercase tracking-wider">{session.skillTitle}</span>
+                                                <span className="text-xs text-slate-400 bg-slate-900 border border-slate-700 px-2 py-1 rounded-md">Lvl {session.currentLevel} / {session.syllabus?.length}</span>
+                                            </div>
+                                            <h3 className="text-lg font-bold text-white mb-1">Student: {session.learnerName}</h3>
+                                            <p className={`text-sm font-medium ${isActionable ? 'text-amber-400' : isWaiting ? 'text-purple-400' : 'text-slate-400'}`}>
+                                                {isActionable && 'Student requested progression or submitted challenge!'}
+                                                {isWaiting && 'Awaiting student to complete your custom challenge...'}
+                                                {isStudying && 'Student is currently studying the module.'}
+                                            </p>
                                         </div>
-                                        <h3 className="text-xl font-bold text-white mb-2">{session.skillTitle}</h3>
-                                        <p className="text-sm text-slate-400 mb-2">Student Enrolled: {session.learnerId}</p>
+                                        <div className="mt-4 md:mt-0 ml-4 shrink-0">
+                                            <button onClick={() => navigate(`/session/${session.id}`)} className={`px-6 py-3 rounded-xl font-bold transition-all shadow-lg flex items-center gap-2 ${isActionable ? 'bg-amber-500 hover:bg-amber-400 text-black hover:-translate-y-1' : 'bg-indigo-500 hover:bg-indigo-400 text-white'}`}>
+                                                {isActionable ? 'Review Student' : 'Open Workspace'}
+                                            </button>
+                                        </div>
                                     </div>
-                                    <button onClick={() => navigate(`/session/${session.id}`)} className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-indigo-500/25">
-                                        Open Chat
-                                    </button>
-                                </div>
-                            ));
+                                );
+                            });
                         })()}
                     </div>
                     ) : activeTab === 'learning' ? (

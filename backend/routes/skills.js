@@ -98,11 +98,11 @@ router.get('/dual-match', async (req, res) => {
     const lowerQuery = `%${query.toLowerCase()}%`;
 
     try {
-        let sql = `SELECT * FROM skills WHERE is_available = true AND (LOWER(title) LIKE $1 OR LOWER(category) LIKE $1) AND credits_per_hour <= $2`;
+        let sql = `SELECT s.* FROM skills s JOIN users u ON s.teacher_id = u.id WHERE u.is_available_for_teaching = true AND s.is_available = true AND (LOWER(s.title) LIKE $1 OR LOWER(s.category) LIKE $1) AND s.credits_per_hour <= $2`;
         const params = [lowerQuery, maxC];
 
         if (userId) {
-            sql += ` AND teacher_id != $3`;
+            sql += ` AND s.teacher_id != $3`;
             params.push(userId);
         }
 
@@ -144,10 +144,10 @@ router.get('/dual-match', async (req, res) => {
 router.get('/', async (req, res) => {
     const { userId } = req.query;
     try {
-        let sql = `SELECT * FROM skills WHERE is_available = true`;
+        let sql = `SELECT s.* FROM skills s JOIN users u ON s.teacher_id = u.id WHERE u.is_available_for_teaching = true AND s.is_available = true`;
         const params = [];
         if (userId) {
-            sql += ` AND teacher_id != $1`;
+            sql += ` AND s.teacher_id != $1`;
             params.push(userId);
         }
         const { rows } = await db.query(sql, params);
@@ -224,14 +224,32 @@ router.post('/:skillId/enroll', async (req, res) => {
             // Deduct credits
             await client.query('UPDATE users SET credits = credits - $1 WHERE id = $2', [skill.credits_per_hour, learnerId]);
             
-            // Set availability to false
+            // Set availability to false for teacher and skill
+            await client.query('UPDATE users SET is_available_for_teaching = false WHERE id = $1', [skill.teacher_id]);
             await client.query('UPDATE skills SET is_available = false WHERE id = $1', [skillId]);
+
+            // Build time-gated syllabus
+            const now = new Date();
+            const sessionSyllabus = (skill.syllabus || []).map((lvl, idx) => {
+                let status = 'Locked';
+                if (idx === 0) {
+                    const scheduled = new Date(`${lvl.scheduledDate}T${lvl.scheduledTime || '00:00'}`);
+                    status = scheduled > now ? 'Upcoming' : 'Active';
+                }
+                return {
+                    ...lvl,
+                    studentSubmission: '',
+                    teacherChallengePrompt: '',
+                    status
+                };
+            });
+            const syllabusJson = JSON.stringify(sessionSyllabus);
 
             const newSessionId = generateId();
             const { rows: sessionRows } = await client.query(
-                `INSERT INTO sessions (id, skill_id, skill_title, teacher_id, teacher_name, learner_id, learner_name, escrow_amount)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-                [newSessionId, skill.id, skill.title, skill.teacher_id, skill.teacher_name, learnerId, learner.name, skill.credits_per_hour]
+                `INSERT INTO sessions (id, skill_id, skill_title, teacher_id, teacher_name, learner_id, learner_name, escrow_amount, syllabus)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                [newSessionId, skill.id, skill.title, skill.teacher_id, skill.teacher_name, learnerId, learner.name, skill.credits_per_hour, syllabusJson]
             );
 
             await client.query('COMMIT');
@@ -291,15 +309,31 @@ const formatSession = (dbSession) => ({
 router.get('/sessions/session/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
     try {
-        const { rows } = await db.query(`
-            SELECT s.*, sk.syllabus 
-            FROM sessions s 
-            LEFT JOIN skills sk ON s.skill_id = sk.id 
-            WHERE s.id = $1
-        `, [sessionId]);
+        const { rows } = await db.query(`SELECT * FROM sessions WHERE id = $1`, [sessionId]);
         if (rows.length === 0) return res.status(404).json({ error: 'Session not found' });
-        res.json(formatSession(rows[0]));
+        
+        const session = rows[0];
+        let updated = false;
+        const now = new Date();
+        const evalSyllabus = (session.syllabus || []).map(lvl => {
+            if (lvl.status === 'Upcoming') {
+                const scheduled = new Date(`${lvl.scheduledDate}T${lvl.scheduledTime || '00:00'}`);
+                if (scheduled <= now) {
+                    lvl.status = 'Active';
+                    updated = true;
+                }
+            }
+            return lvl;
+        });
+        
+        if (updated) {
+            await db.query('UPDATE sessions SET syllabus = $1 WHERE id = $2', [JSON.stringify(evalSyllabus), session.id]);
+            session.syllabus = evalSyllabus;
+        }
+
+        res.json(formatSession(session));
     } catch (err) {
+        console.error(err);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -308,14 +342,35 @@ router.get('/sessions/active/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
         const { rows } = await db.query(
-            `SELECT s.*, sk.syllabus 
-             FROM sessions s 
-             LEFT JOIN skills sk ON s.skill_id = sk.id 
-             WHERE (s.teacher_id = $1 OR s.learner_id = $1) AND s.status = 'active'`,
+            `SELECT * FROM sessions WHERE (teacher_id = $1 OR learner_id = $1) AND status = 'active'`,
             [userId]
         );
-        res.json(rows.map(formatSession));
+        
+        // Dynamically evaluate Upcoming -> Active on fetch
+        const now = new Date();
+        const evaluatedRows = [];
+        for (const session of rows) {
+            let updated = false;
+            const evalSyllabus = (session.syllabus || []).map(lvl => {
+                if (lvl.status === 'Upcoming') {
+                    const scheduled = new Date(`${lvl.scheduledDate}T${lvl.scheduledTime || '00:00'}`);
+                    if (scheduled <= now) {
+                        lvl.status = 'Active';
+                        updated = true;
+                    }
+                }
+                return lvl;
+            });
+            if (updated) {
+                await db.query('UPDATE sessions SET syllabus = $1 WHERE id = $2', [JSON.stringify(evalSyllabus), session.id]);
+                session.syllabus = evalSyllabus;
+            }
+            evaluatedRows.push(session);
+        }
+
+        res.json(evaluatedRows.map(formatSession));
     } catch (err) {
+        console.error(err);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -324,10 +379,7 @@ router.get('/sessions/history/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
         const { rows } = await db.query(
-            `SELECT s.*, sk.syllabus 
-             FROM sessions s 
-             LEFT JOIN skills sk ON s.skill_id = sk.id 
-             WHERE (s.teacher_id = $1 OR s.learner_id = $1) AND (s.status = 'completed' OR s.status = 'disputed')`,
+            `SELECT * FROM sessions WHERE (teacher_id = $1 OR learner_id = $1) AND (status = 'completed' OR status = 'disputed')`,
             [userId]
         );
         res.json(rows.map(formatSession));
@@ -527,30 +579,71 @@ router.post('/sessions/:sessionId/review', async (req, res) => {
 });
 
 router.post('/sessions/:sessionId/progress', async (req, res) => {
-    const { sessionId } = req.params;
-    
-    try {
-        const { rows } = await db.query(
-            `UPDATE sessions SET current_level = current_level + 1 WHERE id = $1 RETURNING *`,
-            [sessionId]
-        );
-        if (rows.length === 0) return res.status(404).json({ error: 'Session not found' });
-        
-        // Return updated session with syllabus attached by re-querying
-        const { rows: sessionRows } = await db.query(`
-            SELECT s.*, sk.syllabus 
-            FROM sessions s 
-            LEFT JOIN skills sk ON s.skill_id = sk.id 
-            WHERE s.id = $1
-        `, [sessionId]);
+    // Deprecated for the new specific /level-action
+    res.status(405).json({ error: 'Use /sessions/:sessionId/level-action' });
+});
 
-        const formatted = formatSession(sessionRows[0]);
+router.post('/sessions/:sessionId/level-action', async (req, res) => {
+    const { sessionId } = req.params;
+    const { levelNumber, action, payload } = req.body; 
+
+    try {
+        const { rows } = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Session not found' });
+        const session = rows[0];
+        let syllabus = session.syllabus || [];
         
-        if (req.io) {
-            req.io.to(sessionId).emit('session_updated', formatted);
-            req.io.to('dashboard').emit('global_session_updated', formatted);
+        const lvlIdx = syllabus.findIndex(l => parseInt(l.levelNumber) === parseInt(levelNumber));
+        if (lvlIdx === -1) return res.status(404).json({ error: 'Level not found' });
+
+        if (action === 'request_next') {
+            syllabus[lvlIdx].status = 'Requested Next Level';
+        } else if (action === 'assign_challenge') {
+            syllabus[lvlIdx].status = 'Challenge Assigned';
+            syllabus[lvlIdx].teacherChallengePrompt = payload?.prompt || '';
+            syllabus[lvlIdx].studentSubmission = ''; // reset just in case
+        } else if (action === 'submit_challenge') {
+            syllabus[lvlIdx].status = 'Requested Next Level';
+            syllabus[lvlIdx].studentSubmission = payload?.submission || '';
+        } else if (action === 'approve') {
+            syllabus[lvlIdx].status = 'Completed';
+            session.current_level = parseInt(levelNumber) + 1;
+            
+            // Time gate the next level if exists
+            if (lvlIdx + 1 < syllabus.length) {
+                const nextLvl = syllabus[lvlIdx + 1];
+                const now = new Date();
+                const scheduled = new Date(`${nextLvl.scheduledDate}T${nextLvl.scheduledTime || '00:00'}`);
+                nextLvl.status = scheduled > now ? 'Upcoming' : 'Active';
+            } else {
+                // All levels completed! Reset teacher availability
+                await db.query('UPDATE users SET is_available_for_teaching = true WHERE id = $1', [session.teacher_id]);
+                // We'll let the user explicitly click complete session to release credits.
+            }
         }
-        res.json(formatted);
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            const { rows: updatedRows } = await client.query(
+                'UPDATE sessions SET syllabus = $1, current_level = $2 WHERE id = $3 RETURNING *',
+                [JSON.stringify(syllabus), session.current_level, sessionId]
+            );
+            await client.query('COMMIT');
+            
+            const formatted = formatSession(updatedRows[0]);
+            if (req.io) {
+                req.io.to(sessionId).emit('session_updated', formatted);
+                req.io.to('dashboard').emit('global_session_updated', formatted);
+            }
+            res.json(formatted);
+        } catch(e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });
