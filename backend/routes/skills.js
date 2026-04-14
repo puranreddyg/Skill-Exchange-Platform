@@ -601,6 +601,8 @@ router.post('/sessions/:sessionId/level-action', async (req, res) => {
         } else if (action === 'request_reschedule') {
             syllabus[lvlIdx].status = 'Reschedule Requested';
             syllabus[lvlIdx].emergencyReason = payload?.emergencyReason || '';
+        } else if (action === 'activate_level') {
+            syllabus[lvlIdx].status = 'Active';
         } else if (action === 'assign_challenge') {
             syllabus[lvlIdx].status = 'Challenge Assigned';
             syllabus[lvlIdx].teacherChallengePrompt = payload?.prompt || '';

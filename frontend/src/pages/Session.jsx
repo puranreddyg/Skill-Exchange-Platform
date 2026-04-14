@@ -37,7 +37,7 @@ export default function Session() {
                 if (!res.ok) throw new Error('Not found');
                 const data = await res.json();
                 setSessionDetails(data);
-            } catch (err) {
+            } catch (_) {
                 navigate('/dashboard');
             }
         };
@@ -81,10 +81,22 @@ export default function Session() {
                     const now = new Date();
                     const diff = scheduled - now;
                     if (diff <= 0) {
-                        // Reload or trigger update
-                        fetch(`/api/skills/sessions/session/${sessionId}`).then(res => res.json()).then(setSessionDetails);
                         clearInterval(interval);
                         setTimeRemaining('00:00:00');
+                        setSessionDetails(prev => {
+                            if (!prev || !prev.syllabus) return prev;
+                            const newSyllabus = [...prev.syllabus];
+                            const idx = prev.currentLevel - 1;
+                            if (newSyllabus[idx] && newSyllabus[idx].status === 'Upcoming') {
+                                newSyllabus[idx].status = 'Active';
+                            }
+                            return { ...prev, syllabus: newSyllabus };
+                        });
+                        fetch(`/api/skills/sessions/${sessionId}/level-action`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ levelNumber: activeLevel.levelNumber, action: 'activate_level' })
+                        });
                     } else {
                         const h = Math.floor(diff / (1000 * 60 * 60));
                         const m = Math.floor((diff / 1000 / 60) % 60);
