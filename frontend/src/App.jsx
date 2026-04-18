@@ -5,6 +5,7 @@ import { SocketProvider } from './context/SocketContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Session from './pages/Session';
+import AIAssistant from './components/AIAssistant';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
               <Route path="/session/:sessionId" element={<Session />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            <AIAssistant />
           </div>
         </SocketProvider>
       </AuthProvider>
