@@ -314,7 +314,8 @@ export default function Session() {
                 {/* RIGHT COLUMN: Action Panel & Chat */}
                 <div className="lg:col-span-2 flex flex-col gap-6 min-h-0">
                     
-                    {/* Session Resources / Meeting Link Spot */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 min-h-0">
+                        {/* Session Resources / Meeting Link Spot */}
                     <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/5 p-4 flex flex-col gap-3 shrink-0 shadow-lg">
                         <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide">Session Resources</h3>
                         {sessionDetails.meetingLink && (
@@ -488,9 +489,10 @@ export default function Session() {
                             </>
                         )}
                     </div>
+                    </div>
 
                     {/* Chat Box below Action Panel */}
-                    <div className="flex-1 bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/5 flex flex-col overflow-hidden min-h-0">
+                    <div className="shrink-0 h-[400px] bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/5 flex flex-col overflow-hidden min-h-0">
                         <div className="shrink-0 p-3 bg-slate-800 border-b border-slate-700 font-bold text-sm text-slate-300">Live Mentorship Chat</div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar min-h-0">
                             {messages.length === 0 ? (
