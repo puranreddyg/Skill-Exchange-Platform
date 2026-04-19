@@ -27,6 +27,7 @@ export default function Session() {
     const [showDisputeModal, setShowDisputeModal] = useState(false);
     const [disputeReason, setDisputeReason] = useState('');
     const [disputeResult, setDisputeResult] = useState(null);
+    const [redirectCountdown, setRedirectCountdown] = useState(null);
 
     const [meetingLinkInput, setMeetingLinkInput] = useState('');
 
@@ -63,6 +64,22 @@ export default function Session() {
                 setSessionDetails(updated);
                 fetchLatestProfile();
             });
+            socket.on('session_disputed', ({ session, disputeRecord }) => {
+                setSessionDetails(session);
+                setDisputeResult(disputeRecord);
+                fetchLatestProfile();
+                
+                let seconds = 15;
+                setRedirectCountdown(seconds);
+                const timer = setInterval(() => {
+                    seconds -= 1;
+                    setRedirectCountdown(seconds);
+                    if (seconds <= 0) {
+                        clearInterval(timer);
+                        window.location.href = '/'; 
+                    }
+                }, 1000);
+            });
             socket.on('receive_meeting_link', ({ meetingLink }) => {
                 setSessionDetails(prev => prev ? { ...prev, meetingLink } : prev);
             });
@@ -71,6 +88,7 @@ export default function Session() {
                 socket.off('receive_message');
                 socket.off('session_updated');
                 socket.off('session_completed');
+                socket.off('session_disputed');
                 socket.off('receive_meeting_link');
             };
         }
@@ -181,12 +199,8 @@ export default function Session() {
             body: JSON.stringify({ reason: disputeReason })
         });
         if (res.ok) {
-            const data = await res.json();
-            setSessionDetails(data.session);
-            setDisputeResult(data.disputeRecord);
             setShowDisputeModal(false);
             setDisputeReason('');
-            fetchLatestProfile();
         }
     };
 
@@ -476,9 +490,9 @@ export default function Session() {
                     </div>
 
                     {/* Chat Box below Action Panel */}
-                    <div className="flex-1 bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/5 flex flex-col overflow-hidden min-h-[300px]">
-                        <div className="p-3 bg-slate-800 border-b border-slate-700 font-bold text-sm text-slate-300">Live Mentorship Chat</div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                    <div className="flex-1 bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/5 flex flex-col overflow-hidden min-h-0">
+                        <div className="shrink-0 p-3 bg-slate-800 border-b border-slate-700 font-bold text-sm text-slate-300">Live Mentorship Chat</div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar min-h-0">
                             {messages.length === 0 ? (
                                 <div className="text-center text-slate-500 mt-10 text-sm">No messages yet. Say hello!</div>
                             ) : (
@@ -496,7 +510,7 @@ export default function Session() {
                             )}
                             <div ref={messagesEndRef} />
                         </div>
-                        <form onSubmit={sendMessage} className="p-3 border-t border-slate-700 bg-slate-800 flex gap-2">
+                        <form onSubmit={sendMessage} className="shrink-0 p-3 border-t border-slate-700 bg-slate-800 flex gap-2">
                             <input 
                                 type="text" 
                                 placeholder="Message your mentor..."
@@ -621,6 +635,36 @@ export default function Session() {
                             <button onClick={() => setShowBulkScheduler(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-xl transition-all">Cancel</button>
                             <button onClick={handleBulkScheduleSubmit} className="flex-[2] bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-[0_0_20px_rgba(99,102,241,0.3)]">Save New Schedule</button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {redirectCountdown !== null && disputeResult && (
+                <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-6 text-center shadow-2xl">
+                    <div className="w-24 h-24 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mb-6 border-2 border-rose-500/50">
+                        <AlertTriangle size={48} />
+                    </div>
+                    <h1 className="text-4xl font-bold bg-gradient-to-r from-rose-400 to-indigo-400 bg-clip-text text-transparent mb-4">Dispute Resolved</h1>
+                    
+                    <div className="bg-slate-800 border border-slate-700 p-8 rounded-3xl max-w-2xl w-full mb-8 shadow-[0_0_50px_rgba(244,63,94,0.15)] mt-4">
+                        <div className={`text-xl font-bold p-5 rounded-2xl mb-6 flex items-center justify-center gap-3 ${disputeResult.fault?.includes('winner:student') ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : (disputeResult.fault?.includes('winner:split') ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'bg-rose-500/20 text-rose-300 border border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.2)]')}`}>
+                            <CheckCircle size={24} />
+                            {disputeResult.fault?.includes('winner:student') 
+                                ? "Ruling: In favor of STUDENT (100% Refund)" 
+                                : (disputeResult.fault?.includes('winner:split') 
+                                    ? "Ruling: Split 50/50" 
+                                    : "Ruling: In favor of TEACHER (100% Paid)")}
+                        </div>
+                        <div className="text-left bg-slate-900/50 p-6 rounded-2xl border border-slate-700/50">
+                            <strong className="block text-slate-400 text-xs tracking-[0.2em] uppercase mb-3 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> AI Evaluator Reasoning</strong>
+                            <p className="text-slate-200 text-base leading-relaxed whitespace-pre-wrap">
+                                {disputeResult.reasoning}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="text-slate-400 animate-pulse text-sm font-bold flex items-center justify-center gap-3 bg-slate-800 py-3 px-6 rounded-full border border-slate-700">
+                        <Clock size={16} className="text-indigo-400" /> Redirecting to Home in {redirectCountdown}s...
                     </div>
                 </div>
             )}

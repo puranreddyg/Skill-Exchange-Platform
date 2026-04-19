@@ -454,7 +454,7 @@ ${chatTranscript}
 
 Dispute Reason from Student: "${disputeReason}"`;
 
-                const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+                const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -515,7 +515,7 @@ Dispute Reason from Student: "${disputeReason}"`;
 
             const formatted = formatSession({...session, status: 'disputed', escrow_amount: 0});
             if (req.io) {
-                req.io.to(sessionId).emit('session_completed', formatted);
+                req.io.to(sessionId).emit('session_disputed', { session: formatted, disputeRecord: { id: disputeId, fault: `winner:${winner}`, reasoning }, message: messageToUser });
                 req.io.to('dashboard').emit('global_session_completed', formatted);
             }
 
