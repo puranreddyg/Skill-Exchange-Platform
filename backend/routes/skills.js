@@ -443,9 +443,13 @@ router.post('/sessions/:sessionId/dispute', async (req, res) => {
         const chatTranscript = messagesRows.map(m => `${m.sender_name} (${m.sender_id === session.teacher_id ? 'Teacher' : 'Student'}): ${m.text}`).join("\n");
 
         let winner = "split";
-        let reasoning = "Unable to determine winner due to missing Chat logs. A standard 50/50 split was applied.";
+        let reasoning = "A standard 50/50 split was applied.";
 
-        if (process.env.GEMINI_API_KEY && chatTranscript.trim().length > 0) {
+        if (chatTranscript.trim().length === 0) {
+            reasoning = "Unable to determine winner due to missing Chat logs. A standard 50/50 split was applied.";
+        } else if (!process.env.GEMINI_API_KEY) {
+            reasoning = "Gemini API Key missing. Applied standard 50/50 split fallback. Check backend/.env";
+        } else {
             try {
                 const prompt = `You are an impartial arbitrator for a peer-to-peer skill exchange platform. Read the following chat transcript between a 'Teacher' and a 'Student'. The student has opened a dispute. Your job is to determine who is at fault based on the conversation (e.g., did the teacher fail to provide the agreed-upon help, or is the student trying to unfairly keep their credits?). Return your response ONLY in JSON format with two keys: "winner" (value must be either 'student' or 'teacher') and "reason" (a brief explanation of your decision).
 
@@ -454,7 +458,7 @@ ${chatTranscript}
 
 Dispute Reason from Student: "${disputeReason}"`;
 
-                const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+                const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY.trim()}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -463,20 +467,24 @@ Dispute Reason from Student: "${disputeReason}"`;
                 });
 
                 const aiData = await geminiRes.json();
+                
                 if (aiData.candidates && aiData.candidates[0].content.parts[0].text) {
                     let text = aiData.candidates[0].content.parts[0].text.trim();
                     if (text.startsWith('```json')) text = text.replace(/^```json\s*/, '').replace(/```$/, '').trim();
                     const parsed = JSON.parse(text);
                     winner = parsed.winner || "split";
                     reasoning = parsed.reason || "AI decided this resolution.";
+                } else if (aiData.error) {
+                    console.error("Gemini API Error Response:", aiData.error);
+                    reasoning = `AI Evaluator failed: ${aiData.error.message || 'Unknown API Error'}. Applied standard 50/50 split fallback.`;
+                } else {
+                    console.error("Unexpected Gemini API structure:", aiData);
+                    reasoning = "AI API returned an unexpected structure. Applied standard 50/50 split fallback.";
                 }
             } catch (error) {
                 console.error("Gemini API Error:", error);
                 reasoning = "AI API encountered an error. Applied standard 50/50 split fallback.";
-                winner = "split";
             }
-        } else if (!process.env.GEMINI_API_KEY) {
-             reasoning = "Gemini API Key missing. Applied standard 50/50 split fallback. Check backend/.env";
         }
 
         let messageToUser = '';
