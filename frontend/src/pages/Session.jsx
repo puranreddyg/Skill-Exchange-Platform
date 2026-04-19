@@ -314,10 +314,9 @@ export default function Session() {
                 </div>
 
                 {/* RIGHT COLUMN: Action Panel & Chat */}
-                <div className="lg:col-span-2 flex flex-col gap-6 min-h-0">
+                <div className="lg:col-span-2 flex flex-col gap-6 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-4">
                     
-                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 min-h-0">
-                        {/* Session Resources / Meeting Link Spot */}
+                    {/* Session Resources / Meeting Link Spot */}
                     <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/5 p-4 flex flex-col gap-3 shrink-0 shadow-lg">
                         <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide">Session Resources</h3>
                         {sessionDetails.meetingLink && (
@@ -490,7 +489,6 @@ export default function Session() {
                                 )}
                             </>
                         )}
-                    </div>
                     </div>
 
                     {/* Chat Box below Action Panel */}
