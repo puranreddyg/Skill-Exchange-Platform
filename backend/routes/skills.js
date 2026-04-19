@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -458,32 +459,26 @@ ${chatTranscript}
 
 Dispute Reason from Student: "${disputeReason}"`;
 
-                const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY.trim()}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }]
-                    })
-                });
-
-                const aiData = await geminiRes.json();
+                const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY.trim());
+                // The correct Google AI Studio model identifier is 'gemini-1.5-flash'
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                 
-                if (aiData.candidates && aiData.candidates[0].content.parts[0].text) {
-                    let text = aiData.candidates[0].content.parts[0].text.trim();
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                let text = response.text().trim();
+                
+                if (text) {
                     if (text.startsWith('```json')) text = text.replace(/^```json\s*/, '').replace(/```$/, '').trim();
                     const parsed = JSON.parse(text);
                     winner = parsed.winner || "split";
                     reasoning = parsed.reason || "AI decided this resolution.";
-                } else if (aiData.error) {
-                    console.error("Gemini API Error Response:", aiData.error);
-                    reasoning = `AI Evaluator failed: ${aiData.error.message || 'Unknown API Error'}. Applied standard 50/50 split fallback.`;
                 } else {
-                    console.error("Unexpected Gemini API structure:", aiData);
-                    reasoning = "AI API returned an unexpected structure. Applied standard 50/50 split fallback.";
+                    throw new Error("No text content returned from Gemini");
                 }
             } catch (error) {
                 console.error("Gemini API Error:", error);
-                reasoning = "AI API encountered an error. Applied standard 50/50 split fallback.";
+                const emsg = error.message ? error.message : "Applied standard 50/50 split fallback.";
+                reasoning = `AI Evaluator failed: ${emsg}`;
             }
         }
 
