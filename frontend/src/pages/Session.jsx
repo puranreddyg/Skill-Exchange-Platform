@@ -210,13 +210,6 @@ export default function Session() {
         setMeetingLinkInput('');
     };
 
-    const sendMessage = (e) => {
-        e.preventDefault();
-        if (!newMessage.trim() || !socket) return;
-        socket.emit('send_message', { sessionId, senderId: currentUser.id, senderName: currentUser.name, text: newMessage });
-        setNewMessage('');
-    };
-
     if (!sessionDetails) return null;
 
     const isTeacher = sessionDetails.teacherId === currentUser.id;
@@ -224,6 +217,15 @@ export default function Session() {
     const activeLevelIndex = (sessionDetails.currentLevel || 1) - 1;
     const activeLevel = syllabus[activeLevelIndex];
     const isSessionFinished = sessionDetails.status === 'completed' || sessionDetails.status === 'disputed';
+    const isUpcoming = activeLevel && activeLevel.status === 'Upcoming';
+    const chatEnabled = !isSessionFinished && !isUpcoming;
+
+    const sendMessage = (e) => {
+        e.preventDefault();
+        if (!newMessage.trim() || !socket || !chatEnabled) return;
+        socket.emit('send_message', { sessionId, senderId: currentUser.id, senderName: currentUser.name, text: newMessage });
+        setNewMessage('');
+    };
 
     return (
         <div className="min-h-screen p-4 max-w-7xl mx-auto flex flex-col h-screen">
@@ -515,12 +517,13 @@ export default function Session() {
                         <form onSubmit={sendMessage} className="shrink-0 p-3 border-t border-slate-700 bg-slate-800 flex gap-2">
                             <input 
                                 type="text" 
-                                placeholder="Message your mentor..."
-                                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 text-white"
+                                placeholder={chatEnabled ? "Message your mentor..." : (isUpcoming ? "Chat unlocks when session starts" : "Chat is closed")}
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                 value={newMessage}
                                 onChange={(e) => setNewMessage(e.target.value)}
+                                disabled={!chatEnabled}
                             />
-                            <button type="submit" disabled={!newMessage.trim()} className="bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-700 text-white px-4 rounded-xl transition-colors">
+                            <button type="submit" disabled={!newMessage.trim() || !chatEnabled} className="bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 rounded-xl transition-colors">
                                 <Send size={16} />
                             </button>
                         </form>
