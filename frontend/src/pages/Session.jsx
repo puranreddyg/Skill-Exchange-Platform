@@ -76,12 +76,15 @@ export default function Session() {
                     setRedirectCountdown(seconds);
                     if (seconds <= 0) {
                         clearInterval(timer);
-                        window.location.href = '/'; 
+                        navigate('/dashboard'); 
                     }
                 }, 1000);
             });
             socket.on('receive_meeting_link', ({ meetingLink }) => {
                 setSessionDetails(prev => prev ? { ...prev, meetingLink } : prev);
+            });
+            socket.on('session_reviewed', () => {
+                navigate('/dashboard');
             });
 
             return () => {
@@ -90,6 +93,7 @@ export default function Session() {
                 socket.off('session_completed');
                 socket.off('session_disputed');
                 socket.off('receive_meeting_link');
+                socket.off('session_reviewed');
             };
         }
     }, [currentUser, socket, sessionId, navigate, fetchLatestProfile]);
@@ -530,7 +534,10 @@ export default function Session() {
                 </div>
             </div>
 
-            {showReviewModal && <ReviewModal sessionId={sessionId} onClose={() => navigate('/dashboard')} />}
+            {showReviewModal && <ReviewModal sessionId={sessionId} onClose={() => {
+                if (socket) socket.emit('notify_review_completed', { sessionId });
+                navigate('/dashboard');
+            }} />}
             
             {showRescheduleModal && (
                 <div className="fixed inset-0 min-h-screen bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">

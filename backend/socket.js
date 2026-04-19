@@ -75,6 +75,10 @@ module.exports = function setupSocket(server) {
             }
         });
 
+        socket.on('notify_review_completed', ({ sessionId }) => {
+            io.to(sessionId).emit('session_reviewed');
+        });
+
         socket.on('disconnect', () => {
         });
     });
