@@ -508,7 +508,7 @@ Dispute Reason from Student: "${disputeReason}"`;
             const disputeId = generateId();
             await client.query(
                 `INSERT INTO admin_disputes (id, session_id, dispute_reason, fault, reasoning) VALUES ($1, $2, $3, $4, $5)`,
-                [disputeId, sessionId, disputeReason, \`winner:\${winner}\`, reasoning]
+                [disputeId, sessionId, disputeReason, `winner:${winner}`, reasoning]
             );
 
             await client.query('COMMIT');
