@@ -442,23 +442,17 @@ router.post('/sessions/:sessionId/dispute', async (req, res) => {
         const { rows: messagesRows } = await db.query('SELECT * FROM messages WHERE session_id = $1 ORDER BY timestamp ASC', [sessionId]);
         const chatTranscript = messagesRows.map(m => `${m.sender_name} (${m.sender_id === session.teacher_id ? 'Teacher' : 'Student'}): ${m.text}`).join("\n");
 
-        let fault = "split";
-        let reasoning = "Unable to determine fault due to missing Chat logs. A standard 50/50 split was applied.";
+        let winner = "split";
+        let reasoning = "Unable to determine winner due to missing Chat logs. A standard 50/50 split was applied.";
 
         if (process.env.GEMINI_API_KEY && chatTranscript.trim().length > 0) {
             try {
-                const prompt = `You are an impartial dispute resolution AI for a skill exchange platform.
-Teacher ID: ${session.teacher_id} (${session.teacher_name})
-Student ID: ${session.learner_id}
-Dispute Reason from Student: "${disputeReason}"
+                const prompt = `You are an impartial arbitrator for a peer-to-peer skill exchange platform. Read the following chat transcript between a 'Teacher' and a 'Student'. The student has opened a dispute. Your job is to determine who is at fault based on the conversation (e.g., did the teacher fail to provide the agreed-upon help, or is the student trying to unfairly keep their credits?). Return your response ONLY in JSON format with two keys: "winner" (value must be either 'student' or 'teacher') and "reason" (a brief explanation of your decision).
 
-Here is the chat transcript:
+Chat Transcript:
 ${chatTranscript}
 
-Analyze the chat logically. If the teacher was professional and provided the service but the student is trolling, fault the student. If the teacher no-showed, ignored messages, or was unhelpful, fault the teacher. If it's a mutual misunderstanding, choose 'split'.
-
-Return ONLY a valid JSON object in this exact format, with no markdown formatting around it:
-{ "fault": "teacher" | "student" | "split", "reasoning": "A 1-2 sentence explanation." }`;
+Dispute Reason from Student: "${disputeReason}"`;
 
                 const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
                     method: 'POST',
@@ -473,13 +467,13 @@ Return ONLY a valid JSON object in this exact format, with no markdown formattin
                     let text = aiData.candidates[0].content.parts[0].text.trim();
                     if (text.startsWith('```json')) text = text.replace(/^```json\s*/, '').replace(/```$/, '').trim();
                     const parsed = JSON.parse(text);
-                    fault = parsed.fault || "split";
-                    reasoning = parsed.reasoning || "AI decided this resolution.";
+                    winner = parsed.winner || "split";
+                    reasoning = parsed.reason || "AI decided this resolution.";
                 }
             } catch (error) {
                 console.error("Gemini API Error:", error);
                 reasoning = "AI API encountered an error. Applied standard 50/50 split fallback.";
-                fault = "split";
+                winner = "split";
             }
         } else if (!process.env.GEMINI_API_KEY) {
              reasoning = "Gemini API Key missing. Applied standard 50/50 split fallback. Check backend/.env";
@@ -492,12 +486,14 @@ Return ONLY a valid JSON object in this exact format, with no markdown formattin
 
             const total = session.escrow_amount;
             if (total > 0) {
-                if (fault === 'teacher') {
+                if (winner === 'student') {
+                    // Student wins, refund credits to student
                     await client.query('UPDATE users SET credits = credits + $1 WHERE id = $2', [total, session.learner_id]);
-                    messageToUser = "100% Refunded to Student. Teacher was found at fault by AI.";
-                } else if (fault === 'student') {
+                    messageToUser = "100% Refunded to Student. AI ruled in favor of the student.";
+                } else if (winner === 'teacher') {
+                    // Teacher wins, release credits to teacher
                     await client.query('UPDATE users SET credits = credits + $1 WHERE id = $2', [total, session.teacher_id]);
-                    messageToUser = "100% Paid to Teacher. Student was found at fault by AI.";
+                    messageToUser = "100% Paid to Teacher. AI ruled in favor of the teacher.";
                 } else {
                     const halfAmount = Math.floor(total / 2);
                     const rem = total - halfAmount;
@@ -512,7 +508,7 @@ Return ONLY a valid JSON object in this exact format, with no markdown formattin
             const disputeId = generateId();
             await client.query(
                 `INSERT INTO admin_disputes (id, session_id, dispute_reason, fault, reasoning) VALUES ($1, $2, $3, $4, $5)`,
-                [disputeId, sessionId, disputeReason, fault, reasoning]
+                [disputeId, sessionId, disputeReason, \`winner:\${winner}\`, reasoning]
             );
 
             await client.query('COMMIT');

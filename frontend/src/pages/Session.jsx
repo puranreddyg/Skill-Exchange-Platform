@@ -24,6 +24,12 @@ export default function Session() {
     const [testPrompt, setTestPrompt] = useState('');
     const [timeRemaining, setTimeRemaining] = useState('');
 
+    const [showDisputeModal, setShowDisputeModal] = useState(false);
+    const [disputeReason, setDisputeReason] = useState('');
+    const [disputeResult, setDisputeResult] = useState(null);
+
+    const [meetingLinkInput, setMeetingLinkInput] = useState('');
+
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef(null);
@@ -57,11 +63,15 @@ export default function Session() {
                 setSessionDetails(updated);
                 fetchLatestProfile();
             });
+            socket.on('receive_meeting_link', ({ meetingLink }) => {
+                setSessionDetails(prev => prev ? { ...prev, meetingLink } : prev);
+            });
 
             return () => {
                 socket.off('receive_message');
                 socket.off('session_updated');
                 socket.off('session_completed');
+                socket.off('receive_meeting_link');
             };
         }
     }, [currentUser, socket, sessionId, navigate, fetchLatestProfile]);
@@ -164,6 +174,28 @@ export default function Session() {
         }
     };
 
+    const handleDisputeSubmit = async () => {
+        const res = await fetch(`/api/skills/sessions/${sessionId}/dispute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: disputeReason })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            setSessionDetails(data.session);
+            setDisputeResult(data.disputeRecord);
+            setShowDisputeModal(false);
+            setDisputeReason('');
+            fetchLatestProfile();
+        }
+    };
+
+    const shareMeetingLink = () => {
+        if (!meetingLinkInput.trim() || !socket) return;
+        socket.emit('send_meeting_link', { sessionId, meetingLink: meetingLinkInput });
+        setMeetingLinkInput('');
+    };
+
     const sendMessage = (e) => {
         e.preventDefault();
         if (!newMessage.trim() || !socket) return;
@@ -196,10 +228,17 @@ export default function Session() {
                         </p>
                     </div>
                 </div>
-                {!isTeacher && !isSessionFinished && activeLevelIndex >= syllabus.length && (
-                    <button onClick={handleCompleteSession} className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white px-4 py-2 rounded-lg font-bold transition-all text-sm flex items-center gap-2">
-                        <CheckCircle size={16} /> Finish Course & Release Credits
-                    </button>
+                {!isTeacher && !isSessionFinished && (
+                    <div className="flex items-center gap-2">
+                        {activeLevelIndex >= syllabus.length && (
+                            <button onClick={handleCompleteSession} className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white px-4 py-2 rounded-lg font-bold transition-all text-sm flex items-center gap-2">
+                                <CheckCircle size={16} /> Finish Course & Release Credits
+                            </button>
+                        )}
+                        <button onClick={() => setShowDisputeModal(true)} className="bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500 hover:text-white px-4 py-2 rounded-lg font-bold transition-all text-sm flex items-center gap-2">
+                            <AlertTriangle size={16} /> Dispute Session
+                        </button>
+                    </div>
                 )}
             </header>
 
@@ -261,10 +300,42 @@ export default function Session() {
                 {/* RIGHT COLUMN: Action Panel & Chat */}
                 <div className="lg:col-span-2 flex flex-col gap-6 min-h-0">
                     
+                    {/* Session Resources / Meeting Link Spot */}
+                    <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/5 p-4 flex flex-col gap-3 shrink-0 shadow-lg">
+                        <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide">Session Resources</h3>
+                        {sessionDetails.meetingLink && (
+                            <div className="bg-indigo-500/10 border border-indigo-500/30 p-3 rounded-xl flex items-center justify-between">
+                                <span className="text-sm text-indigo-300">Live Meeting Link:</span>
+                                <a href={sessionDetails.meetingLink.startsWith('http') ? sessionDetails.meetingLink : `https://${sessionDetails.meetingLink}`} target="_blank" rel="noopener noreferrer" className="bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-1.5 px-4 rounded-lg text-sm transition-all shadow-[0_0_10px_rgba(99,102,241,0.3)]">Join Meeting</a>
+                            </div>
+                        )}
+                        {isTeacher && !isSessionFinished && (
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    placeholder="Enter Zoom/Meet link..." 
+                                    value={meetingLinkInput}
+                                    onChange={e => setMeetingLinkInput(e.target.value)}
+                                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                />
+                                <button disabled={!meetingLinkInput.trim()} onClick={shareMeetingLink} className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-2 px-4 rounded-lg text-sm transition-all disabled:opacity-50 shadow-md">
+                                    Share Link
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
                     {/* The Action Panel */}
                     <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl border border-indigo-500/20 p-6 flex-shrink-0 shadow-2xl relative overflow-hidden">
                         {/* Elegant background flare */}
                         <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                        
+                        {disputeResult && (
+                            <div className={`mb-4 border p-4 rounded-xl ${disputeResult.fault && disputeResult.fault.includes('winner:student') ? 'bg-emerald-500/10 border-emerald-500 text-emerald-200' : 'bg-rose-500/10 border-rose-500 text-rose-200'}`}>
+                                <h4 className="font-bold mb-1">Dispute Resolution Result</h4>
+                                <p className="text-sm opacity-90">{disputeResult.reasoning}</p>
+                            </div>
+                        )}
                         
                         {!activeLevel ? (
                             <div className="text-center p-8">
@@ -461,6 +532,28 @@ export default function Session() {
                         <div className="flex gap-3">
                             <button onClick={() => setShowRescheduleModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-xl transition-all">Cancel</button>
                             <button disabled={!emergencyReason.trim()} onClick={handleRescheduleSubmit} className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-bold py-2 px-4 rounded-xl transition-all shadow-lg">Submit Request</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showDisputeModal && (
+                <div className="fixed inset-0 min-h-screen bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-800 border-2 border-rose-500/50 rounded-2xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(244,63,94,0.2)]">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="bg-rose-500/20 p-3 rounded-full text-rose-500"><AlertTriangle size={24}/></div>
+                            <h2 className="text-xl font-bold text-white">Dispute Session</h2>
+                        </div>
+                        <p className="text-slate-300 mb-4 text-sm">Please explain why you are disputing this session. Our AI Dispute Resolution System will analyze your chat history and reason to determine who gets the credits.</p>
+                        <textarea
+                            value={disputeReason}
+                            onChange={(e) => setDisputeReason(e.target.value)}
+                            placeholder="State your case..."
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-rose-500 h-24 mb-4"
+                        />
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowDisputeModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-xl transition-all">Cancel</button>
+                            <button disabled={!disputeReason.trim()} onClick={handleDisputeSubmit} className="flex-1 bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-black font-bold py-2 px-4 rounded-xl transition-all shadow-lg">Submit Dispute</button>
                         </div>
                     </div>
                 </div>
