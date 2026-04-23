@@ -28,6 +28,7 @@ export default function Session() {
     const [disputeReason, setDisputeReason] = useState('');
     const [disputeResult, setDisputeResult] = useState(null);
     const [redirectCountdown, setRedirectCountdown] = useState(null);
+    const [isDisputing, setIsDisputing] = useState(false);
 
     const [meetingLinkInput, setMeetingLinkInput] = useState('');
 
@@ -197,14 +198,22 @@ export default function Session() {
     };
 
     const handleDisputeSubmit = async () => {
-        const res = await fetch(`/api/skills/sessions/${sessionId}/dispute`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reason: disputeReason })
-        });
-        if (res.ok) {
-            setShowDisputeModal(false);
-            setDisputeReason('');
+        setIsDisputing(true);
+        try {
+            const res = await fetch(`/api/skills/sessions/${sessionId}/dispute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: disputeReason })
+            });
+            if (res.ok) {
+                setShowDisputeModal(false);
+                setDisputeReason('');
+            } else {
+                const data = await res.json();
+                alert(data.error || "An error occurred while submitting dispute.");
+            }
+        } finally {
+            setIsDisputing(false);
         }
     };
 
@@ -576,8 +585,14 @@ export default function Session() {
                             className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-rose-500 h-24 mb-4"
                         />
                         <div className="flex gap-3">
-                            <button onClick={() => setShowDisputeModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-xl transition-all">Cancel</button>
-                            <button disabled={!disputeReason.trim()} onClick={handleDisputeSubmit} className="flex-1 bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-black font-bold py-2 px-4 rounded-xl transition-all shadow-lg">Submit Dispute</button>
+                            <button onClick={() => setShowDisputeModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-xl transition-all" disabled={isDisputing}>Cancel</button>
+                            <button disabled={!disputeReason.trim() || isDisputing} onClick={handleDisputeSubmit} className="flex-1 bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-black font-bold py-2 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2">
+                                {isDisputing ? (
+                                    <><div className="w-4 h-4 rounded-full border-2 border-black border-t-transparent animate-spin"/> AI Analyzing...</>
+                                ) : (
+                                    "Submit Dispute"
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>
