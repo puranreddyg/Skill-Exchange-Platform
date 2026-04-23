@@ -477,8 +477,10 @@ Dispute Reason from Student: "${disputeReason}"`;
                 }
             } catch (error) {
                 console.error("Gemini API Error:", error);
-                const emsg = error.message ? error.message : "Applied standard 50/50 split fallback.";
-                reasoning = `AI Evaluator failed: ${emsg}`;
+                const emsg = error.message ? error.message : "Service Unavailable";
+                return res.status(503).json({ 
+                    error: `AI Evaluator failed: ${emsg}. Please try clicking 'Dispute' again in a few moments.` 
+                });
             }
         }
 
