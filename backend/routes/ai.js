@@ -27,7 +27,7 @@ router.post('/generate-review', async (req, res) => {
             return res.json({ suggestion: mockSuggestion });
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const chatContext = sessionMessages.map(m => `${m.role}: ${m.text}`).join('\n');
         const prompt = `Based on the following chat context between a student and a teacher, generate a short, positive, 1-2 sentence review from the perspective of the student about the teacher's help.\n\nContext:\n${chatContext}`;
         
@@ -58,7 +58,7 @@ router.post('/assistant', async (req, res) => {
             return res.json({ reply });
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const prompt = `You are a helpful AI assistant for a Skill Exchange Platform.
 Context rules:
 - Users earn credits to spend on enrolling in skills (budget-friendly match).
