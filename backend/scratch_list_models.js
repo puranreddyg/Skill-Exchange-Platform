@@ -2,7 +2,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 async function test() {
   try {
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyDzVC4j49Bc0JgBM9POUFs3T7DDomcuOe4');
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyCpcWpF7Vw2KQqn0J5OxaoeBJw4F6R3_fw');
     const data = await response.json();
     if (data.models) {
         console.log("Available models:");

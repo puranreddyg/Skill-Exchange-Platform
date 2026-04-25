@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 async function test() {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'AIzaSyDzVC4j49Bc0JgBM9POUFs3T7DDomcuOe4');
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'AIzaSyCpcWpF7Vw2KQqn0J5OxaoeBJw4F6R3_fw');
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent("Hello?");
