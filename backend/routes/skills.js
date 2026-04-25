@@ -529,7 +529,7 @@ Dispute Reason from Student: "${disputeReason}"`;
                 req.io.to('dashboard').emit('global_session_completed', formatted);
             }
 
-            res.json({ message: messageToUser, session: formatted, disputeRecord: { id: disputeId, fault, reasoning } });
+            res.json({ message: messageToUser, session: formatted, disputeRecord: { id: disputeId, fault: `winner:${winner}`, reasoning } });
         } catch (e) {
             await client.query('ROLLBACK');
             throw e;
