@@ -42,40 +42,7 @@ router.post('/generate-review', async (req, res) => {
     }
 });
 
-router.post('/assistant', async (req, res) => {
-    const { query } = req.body; 
 
-    try {
-        if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_API_KEY_HERE') {
-            let reply = "I'm the Platform Assistant! (Plug in Gemini API to unlock my full potential!) ";
-            if (query.toLowerCase().includes('credit')) {
-                reply += "You earn default credits, and spend them to enroll!";
-            } else if (query.toLowerCase().includes('skill')) {
-                reply += "You can publish a skill using the publishing form on the Dashboard!";
-            } else {
-                reply += `I got your question: "${query}". How can I help?`;
-            }
-            return res.json({ reply });
-        }
-
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        const prompt = `You are a helpful AI assistant for a Skill Exchange Platform.
-Context rules:
-- Users earn credits to spend on enrolling in skills (budget-friendly match).
-- Users can publish a skill using the "Publish Skill" button on the Dashboard.
-- Users can access the "My Learning" and "My Teaching" tabs to see their sessions.
-
-Answer the user's question concisely and conversationally.
-User Question: ${query}`;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        res.json({ reply: response.text() });
-    } catch (error) {
-        console.error("AI Chatbot Error:", error);
-        res.status(500).json({ error: 'AI is unavailable' });
-    }
-});
 
 router.post('/generate-quiz', async (req, res) => {
     const { topicName } = req.body;
