@@ -77,4 +77,52 @@ User Question: ${query}`;
     }
 });
 
+router.post('/generate-quiz', async (req, res) => {
+    const { topicName } = req.body;
+    
+    if (!topicName) {
+        return res.status(400).json({ error: 'Topic name is required' });
+    }
+
+    try {
+        if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_API_KEY_HERE') {
+            // Mock response if no API key
+            const mockQuiz = [
+                { question: `What is a core concept of ${topicName}?`, options: ["Concept A", "Concept B", "Concept C", "Concept D"], correctAnswer: "Concept A" },
+                { question: `Why is ${topicName} important?`, options: ["Reason 1", "Reason 2", "Reason 3", "Reason 4"], correctAnswer: "Reason 1" },
+                { question: `Which tool is used for ${topicName}?`, options: ["Tool X", "Tool Y", "Tool Z", "Tool W"], correctAnswer: "Tool X" },
+                { question: `How do you start with ${topicName}?`, options: ["Step 1", "Step 2", "Step 3", "Step 4"], correctAnswer: "Step 1" },
+                { question: `What is the final goal of ${topicName}?`, options: ["Goal A", "Goal B", "Goal C", "Goal D"], correctAnswer: "Goal A" }
+            ];
+            return res.json({ quiz: mockQuiz });
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const prompt = `Generate a 5-question multiple-choice quiz about the topic: "${topicName}".
+Return the response STRICTLY as a JSON array where each object has:
+- "question" (string)
+- "options" (array of exactly 4 strings)
+- "correctAnswer" (string, must exactly match one of the options)
+Do not return any markdown formatting like \`\`\`json, only the raw JSON array.`;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+        
+        let quiz;
+        try {
+            // Try to parse the JSON directly
+            const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+            quiz = JSON.parse(cleanJson);
+        } catch (e) {
+            console.error("Failed to parse Gemini JSON output:", responseText);
+            return res.status(500).json({ error: 'Failed to generate a valid quiz format' });
+        }
+
+        res.json({ quiz });
+    } catch (error) {
+        console.error("AI Quiz Generation Error:", error);
+        res.status(500).json({ error: 'Failed to generate quiz' });
+    }
+});
+
 module.exports = router;

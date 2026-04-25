@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { Send, ArrowLeft, CheckCircle, Clock, AlertTriangle, ChevronRight } from 'lucide-react';
 import ReviewModal from '../components/ReviewModal';
+import QuizModal from '../components/QuizModal';
 
 export default function Session() {
     const { sessionId } = useParams();
@@ -13,6 +14,7 @@ export default function Session() {
     
     const [sessionDetails, setSessionDetails] = useState(null);
     const [showReviewModal, setShowReviewModal] = useState(false);
+    const [showQuizModal, setShowQuizModal] = useState(false);
     
     // Reschedule UI States
     const [showRescheduleModal, setShowRescheduleModal] = useState(false);
@@ -192,7 +194,7 @@ export default function Session() {
         const res = await fetch(`/api/skills/sessions/${sessionId}/complete`, { method: 'POST' });
         if (res.ok) {
             setSessionDetails(prev => ({ ...prev, status: 'completed' }));
-            setShowReviewModal(true);
+            setShowQuizModal(true);
             fetchLatestProfile();
         }
     };
@@ -542,6 +544,16 @@ export default function Session() {
 
                 </div>
             </div>
+
+            {showQuizModal && <QuizModal 
+                sessionDetails={sessionDetails} 
+                currentUser={currentUser} 
+                onClose={() => {
+                    setShowQuizModal(false);
+                    setShowReviewModal(true);
+                }} 
+                fetchLatestProfile={fetchLatestProfile} 
+            />}
 
             {showReviewModal && <ReviewModal sessionId={sessionId} onClose={() => {
                 if (socket) socket.emit('notify_review_completed', { sessionId });

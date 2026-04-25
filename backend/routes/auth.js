@@ -6,7 +6,7 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 
 router.get('/:id', async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT id, name, credits FROM users WHERE id = $1', [req.params.id]);
+        const { rows } = await db.query('SELECT id, name, credits, badges FROM users WHERE id = $1', [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
         res.json(rows[0]);
     } catch (err) {
@@ -37,7 +37,7 @@ router.post('/signup', async (req, res) => {
 
         res.status(201).json({ 
             message: 'Signup successful', 
-            user: { id: newId, name, credits: initialCredits },
+            user: { id: newId, name, credits: initialCredits, badges: [] },
             token: `mock_token_${newId}`
         });
     } catch (err) {
@@ -49,7 +49,7 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     
     try {
-        const { rows } = await db.query('SELECT id, name, credits FROM users WHERE email = $1 AND password = $2', [email, password]);
+        const { rows } = await db.query('SELECT id, name, credits, badges FROM users WHERE email = $1 AND password = $2', [email, password]);
         
         if (rows.length === 0) {
             return res.status(401).json({ error: 'Invalid email or password' });
@@ -64,6 +64,32 @@ router.post('/login', async (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ error: 'Server error during login' });
+    }
+});
+
+router.post('/mint-badge', async (req, res) => {
+    const { userId, topic } = req.body;
+    if (!userId || !topic) return res.status(400).json({ error: 'Missing parameters' });
+    
+    try {
+        const { rows } = await db.query('SELECT badges FROM users WHERE id = $1', [userId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        
+        let badges = rows[0].badges || [];
+        // Prevent duplicate badge topics
+        if (badges.some(b => b.topic === topic)) {
+            return res.json({ message: 'Badge already minted', badges });
+        }
+        
+        const newBadge = { topic, earnedAt: new Date().toISOString() };
+        badges.push(newBadge);
+        
+        await db.query('UPDATE users SET badges = $1::jsonb WHERE id = $2', [JSON.stringify(badges), userId]);
+        
+        res.json({ message: 'Badge minted successfully', badges });
+    } catch (err) {
+        console.error('Badge Minting Error:', err);
+        res.status(500).json({ error: 'Failed to mint badge' });
     }
 });
 

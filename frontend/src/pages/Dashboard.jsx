@@ -229,6 +229,7 @@ export default function Dashboard() {
                             <button onClick={() => setActiveTab('teaching')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'teaching' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>My Teaching</button>
                             <button onClick={() => setActiveTab('learning')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'learning' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>My Learning</button>
                             <button onClick={() => setActiveTab('history')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'history' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>History</button>
+                            <button onClick={() => setActiveTab('badges')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'badges' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>My Badges</button>
                         </div>
                         <button onClick={() => setShowPublishForm(!showPublishForm)} className="group bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all duration-300 text-sm font-medium shadow-lg hover:shadow-indigo-500/50">
                             <PlusCircle size={18} className="group-hover:rotate-90 transition-transform duration-300" /> Publish Skill
@@ -421,7 +422,19 @@ export default function Dashboard() {
                                     )}
 
                                     <div className="flex justify-between items-center text-sm text-slate-400 border-t border-slate-700/50 pt-4 mt-2">
-                                        <div className="flex items-center gap-2"><User size={16} /><span>Taught by <strong className="text-white">{skill.teacherName}</strong></span></div>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex items-center gap-2"><User size={16} /><span>Taught by <strong className="text-white">{skill.teacherName}</strong></span></div>
+                                            {skill.teacherBadges && skill.teacherBadges.length > 0 && (
+                                                <div className="flex gap-1 mt-1">
+                                                    {skill.teacherBadges.slice(0, 3).map((b, idx) => (
+                                                        <div key={idx} className="flex items-center gap-1 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 px-2 py-0.5 rounded-full text-[10px] text-indigo-300 font-bold uppercase tracking-wider">
+                                                            <Award size={10} className="text-yellow-400" /> {b.topic}
+                                                        </div>
+                                                    ))}
+                                                    {skill.teacherBadges.length > 3 && <span className="text-[10px] text-slate-500">+{skill.teacherBadges.length - 3}</span>}
+                                                </div>
+                                            )}
+                                        </div>
                                         <div className="font-medium text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1">✨ Match Score: {dynamicScore}%</div>
                                     </div>
                                 </div>
@@ -528,6 +541,35 @@ export default function Dashboard() {
                                     </button>
                                 </div>
                             ))
+                        )}
+                    </div>
+                    ) : activeTab === 'badges' ? (
+                    <div className="space-y-4 h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                        {(!currentUser.badges || currentUser.badges.length === 0) ? (
+                            <div className="text-center p-12 glass rounded-2xl border-dashed border-slate-600 border-2">
+                                <Award size={48} className="text-slate-600 mx-auto mb-4" />
+                                <h3 className="text-xl font-bold text-slate-300 mb-2">No Badges Yet</h3>
+                                <p className="text-slate-400">Complete a course and pass the AI quiz to earn your first verified badge!</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                                {currentUser.badges.map((badge, idx) => (
+                                    <div key={idx} className="group perspective-1000 w-full aspect-square">
+                                        <div className="relative w-full h-full transition-transform duration-500 transform-style-3d group-hover:rotate-y-180 drop-shadow-[0_0_20px_rgba(99,102,241,0.4)]">
+                                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl p-1 shadow-2xl">
+                                                <div className="absolute inset-0 bg-white/20 rounded-2xl blur-sm"></div>
+                                                <div className="w-full h-full bg-slate-900 rounded-[14px] flex flex-col items-center justify-center relative overflow-hidden border-2 border-black/50">
+                                                    <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/10 to-transparent"></div>
+                                                    <Award size={40} className="text-yellow-400 mb-2 drop-shadow-[0_0_10px_rgba(250,204,21,0.6)]" />
+                                                    <span className="text-[10px] font-bold text-white uppercase tracking-widest opacity-80">Verified</span>
+                                                    <span className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-yellow-500 text-center px-2 mt-1">{badge.topic}</span>
+                                                    <span className="text-[9px] text-slate-500 absolute bottom-3">{new Date(badge.earnedAt).toLocaleDateString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                     ) : null}

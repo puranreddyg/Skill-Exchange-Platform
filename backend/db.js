@@ -85,6 +85,7 @@ const initDB = async () => {
     await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS current_level INTEGER DEFAULT 1;`);
     await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS syllabus JSONB DEFAULT '[]'::jsonb;`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_available_for_teaching BOOLEAN DEFAULT true;`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS badges JSONB DEFAULT '[]'::jsonb;`);
     
     // Added for presentation: ONE-TIME WIPE of all data
     await pool.query(`CREATE TABLE IF NOT EXISTS wipe_marker_v2 (id INT PRIMARY KEY)`);

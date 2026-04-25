@@ -16,6 +16,7 @@ const enrichSkills = async (skillsArray) => {
     const { rows: sessions } = await db.query('SELECT * FROM sessions WHERE teacher_id = ANY($1)', [teacherIds]);
     const { rows: adminDisputes } = await db.query('SELECT * FROM admin_disputes');
     const { rows: reviews } = await db.query('SELECT * FROM reviews WHERE teacher_id = ANY($1)', [teacherIds]);
+    const { rows: users } = await db.query('SELECT id, badges FROM users WHERE id = ANY($1)', [teacherIds]);
 
     return skillsArray.map(skill => {
         let tier = 'Tier B (Mid)';
@@ -68,6 +69,9 @@ const enrichSkills = async (skillsArray) => {
         const baseScore = (qualityScore * 0.5) + (reliabilityScore * 0.5);
         const matchScore = Math.max(0, Math.min(Math.round(baseScore * 100), 100));
 
+        const teacherUser = users.find(u => u.id === skill.teacher_id);
+        const teacherBadges = teacherUser ? (teacherUser.badges || []) : [];
+
         return { 
             id: skill.id,
             title: skill.title,
@@ -86,7 +90,8 @@ const enrichSkills = async (skillsArray) => {
             qualityScore,
             reviewCount,
             totalDays: skill.total_days,
-            syllabus: skill.syllabus
+            syllabus: skill.syllabus,
+            teacherBadges
         };
     });
 };
