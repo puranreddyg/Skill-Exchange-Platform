@@ -47,7 +47,8 @@ export default function Session() {
                 if (!res.ok) throw new Error('Not found');
                 const data = await res.json();
                 setSessionDetails(data);
-            } catch (_) {
+            } catch (error) {
+                console.error(error);
                 navigate('/dashboard');
             }
         };

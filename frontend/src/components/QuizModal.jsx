@@ -24,7 +24,8 @@ export default function QuizModal({ sessionDetails, currentUser, onClose, fetchL
                 alert("Failed to generate quiz. Skipping to review.");
                 onClose();
             }
-        } catch (e) {
+        } catch (error) {
+            console.error(error);
             alert("Error connecting to AI. Skipping to review.");
             onClose();
         }
