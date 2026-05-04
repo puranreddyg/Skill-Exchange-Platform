@@ -21,12 +21,13 @@ export default function QuizModal({ sessionDetails, currentUser, onClose, fetchL
                 setQuizData(data.quiz);
                 setStep('quiz');
             } else {
-                alert("Failed to generate quiz. Skipping to review.");
+                const errData = await res.json().catch(() => ({}));
+                alert(`AI Error: ${errData.error || "Failed to generate quiz"}. This usually means your Gemini API key is invalid or expired. Skipping to review.`);
                 onClose();
             }
         } catch (error) {
             console.error(error);
-            alert("Error connecting to AI. Skipping to review.");
+            alert("Error connecting to AI. This usually means your Gemini API key is missing or expired. Skipping to review.");
             onClose();
         }
     };
