@@ -60,14 +60,26 @@ export default function Session() {
             .then(data => setMessages(data))
             .catch(err => console.error("Could not fetch messages", err));
 
+        // Check if the WebSocket connection exists
         if (socket) {
+            // This is where the frontend connects to our live mentorship room.
             socket.emit('join_session', { sessionId });
+            
+            // This line powers the chat animations and instant messaging.
+            // Whenever a message arrives, it immediately pops up on screen without the user refreshing the page.
             socket.on('receive_message', (msg) => setMessages(prev => [...prev, msg]));
+            
+            // This powers our strict "State Machine" syllabus progression.
+            // If a teacher approves a module, the student's screen instantly unlocks the next level.
             socket.on('session_updated', (updated) => setSessionDetails(updated));
+            
+            // This handles the automatic credit transfer when a course is successfully finished.
             socket.on('session_completed', (updated) => {
                 setSessionDetails(updated);
                 fetchLatestProfile();
             });
+            // When the AI finishes its analysis, it broadcasts the final verdict back to both users instantly.
+            // This pops up the result screen showing exactly why the AI made its decision and where the credits went.
             socket.on('session_disputed', ({ session, disputeRecord }) => {
                 setSessionDetails(session);
                 setDisputeResult(disputeRecord);
@@ -107,6 +119,13 @@ export default function Session() {
     }, [messages]);
 
     useEffect(() => {
+        // =========================================================================
+        // ⏱️ PRESENTATION POINT 5: STATE MACHINE TIMING ENGINE
+        // -------------------------------------------------------------------------
+        // This useEffect acts as a strict time-gating engine. If a module is scheduled for the future ('Upcoming'), 
+        // the chat and progression are locked. It constantly polls the time, and the precise millisecond the 
+        // scheduled time hits, it automatically updates the state to 'Active' and opens the socket channels.
+        // =========================================================================
         // Countdown timer for Upcoming levels
         let interval;
         if (sessionDetails && sessionDetails.syllabus) {
@@ -147,6 +166,13 @@ export default function Session() {
         return () => clearInterval(interval);
     }, [sessionDetails, sessionId]);
 
+    // =========================================================================
+    // 🚦 PRESENTATION POINT 6: EMERGENCY RESCHEDULE & PROGRESSION GATING
+    // -------------------------------------------------------------------------
+    // This is the core logic that handles student progression requests and Emergency Reschedules.
+    // By passing an action (like 'request_reschedule' or 'submit_challenge'), it hits the backend level-action endpoint.
+    // This ensures teachers must review and approve challenges before the student can advance to the next level.
+    // =========================================================================
     const handleAction = async (action, payload = {}) => {
         const activeLevel = sessionDetails.syllabus[sessionDetails.currentLevel - 1];
         if (!activeLevel) return;

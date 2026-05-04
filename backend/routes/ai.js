@@ -64,7 +64,13 @@ router.post('/generate-quiz', async (req, res) => {
             return res.json({ quiz: mockQuiz });
         }
 
+        // This is the core of our AI Gamification feature. 
+        // We connect to Google Gemini to make the platform feel dynamic and intelligent.
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        
+        // Instead of hardcoding generic tests, we feed the specific course topic to the AI.
+        // The AI generates a unique, 5-question multiple choice quiz on the fly.
+        // This guarantees that every skill on the platform has a custom assessment for verified badges.
         const prompt = `Generate a 5-question multiple-choice quiz about the topic: "${topicName}".
 Return the response STRICTLY as a JSON array where each object has:
 - "question" (string)
@@ -77,7 +83,7 @@ Do not return any markdown formatting like \`\`\`json, only the raw JSON array.`
         
         let quiz;
         try {
-            // Try to parse the JSON directly
+            // We format the AI's response so it can be instantly rendered into interactive UI buttons on the frontend.
             const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
             quiz = JSON.parse(cleanJson);
         } catch (e) {

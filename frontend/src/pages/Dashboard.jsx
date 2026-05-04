@@ -114,6 +114,13 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentUser, socket, navigate]);
 
+    // =========================================================================
+    // 🖥️ PRESENTATION POINT 1: PUBLISH SKILL (Desktop UI)
+    // -------------------------------------------------------------------------
+    // This function handles the skill publishing logic. It validates the dynamic syllabus dates 
+    // to ensure they fit within the course duration. It then sends the data to the PostgreSQL database
+    // and broadcasts the new skill via WebSockets so it instantly appears on everyone's feed.
+    // =========================================================================
     const handlePublish = async (e) => {
         e.preventDefault();
         
@@ -169,6 +176,12 @@ export default function Dashboard() {
         }
     };
 
+    // =========================================================================
+    // 🖥️ PRESENTATION POINT 1: DUAL-MATCH SEARCH ENGINE
+    // -------------------------------------------------------------------------
+    // This function connects the frontend search bar and budget slider to our backend Dual-Match Engine.
+    // It fetches the results and renders the 'Premium Match' and 'Top Value Choice' cards to the user.
+    // =========================================================================
     const handleFindTutors = async () => {
         if (!searchQuery) return;
         const res = await fetch(`/api/skills/dual-match?query=${encodeURIComponent(searchQuery)}&maxCredits=${maxCredits}&userId=${currentUser.id}`);

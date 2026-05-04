@@ -10,14 +10,20 @@ const aiRoutes = require('./routes/ai');
 const setupSocket = require('./socket');
 const { initDB } = require('./db');
 
+// This file acts as the central brain of our backend infrastructure.
+// It initializes our custom server so we aren't relying on third-party platforms.
+// This allows us to securely control our own credit economy and database.
 const app = express();
+
 const server = http.createServer(app);
 
 app.use(cors());
 app.use(express.json());
 
-// Socket.io
+// Here we inject our real-time communication engine (Socket.io) into the server.
+// This is what allows our platform to have instant, live-updating features across the whole application.
 const io = setupSocket(server);
+
 app.use((req, res, next) => {
     req.io = io;
     next();

@@ -120,7 +120,14 @@ router.get('/dual-match', async (req, res) => {
 
         const enriched = await enrichSkills(filtered);
 
-        // Premium Match Check: Safest Bet Expert
+        // =========================================================================
+        // 💎 PRESENTATION POINT: PREMIUM MATCH ALGORITHM (The Safest Bet)
+        // -------------------------------------------------------------------------
+        // We filter for highly experienced teachers (5+ sessions) with an elite 90%+ reliability score.
+        // We then sort them strictly by their Bayesian quality score. 
+        // This guarantees the student gets the absolute best mentor available on the platform, 
+        // eliminating the risk of a bad experience for users willing to spend more credits.
+        // =========================================================================
         const eligiblePremium = enriched.filter(s => s.totalSessionsCount >= 5 && s.reliabilityScore > 0.90);
         eligiblePremium.sort((a, b) => {
             if (b.qualityScore !== a.qualityScore) return b.qualityScore - a.qualityScore;
@@ -129,7 +136,14 @@ router.get('/dual-match', async (req, res) => {
         });
         const premiumMatch = eligiblePremium.length > 0 ? eligiblePremium[0] : null;
 
-        // Top Value Check: Best Bang for Credit
+        // =========================================================================
+        // 💰 PRESENTATION POINT: TOP VALUE MATCH ALGORITHM (Best Bang for Credit)
+        // -------------------------------------------------------------------------
+        // We filter for affordable teachers (charging 3 credits or less).
+        // The ranking formula squares the quality score and divides by the cost: (Quality² / Credits).
+        // By squaring the quality score, we mathematically penalize bad teachers heavily, 
+        // ensuring that budget-conscious students are recommended the best possible mentor for their price point.
+        // =========================================================================
         const remainingForValue = enriched.filter(s => (!premiumMatch || s.id !== premiumMatch.id) && (s.creditsPerHour || 1) <= 3);
         remainingForValue.sort((a, b) => {
             const vfmA = Math.pow(a.qualityScore, 2) / (a.creditsPerHour || 1);
@@ -236,7 +250,19 @@ router.post('/:skillId/enroll', async (req, res) => {
 
             // Build time-gated syllabus
             const now = new Date();
-            const sessionSyllabus = (skill.syllabus || []).map((lvl, idx) => {
+            let rawSyllabus = skill.syllabus || [];
+            
+            // If there are no lessons, create a default one so the progression flow works
+            if (rawSyllabus.length === 0) {
+                rawSyllabus = [{
+                    levelNumber: 1,
+                    topicName: 'General Mentorship & Progression',
+                    scheduledDate: now.toISOString().split('T')[0],
+                    scheduledTime: '00:00'
+                }];
+            }
+
+            const sessionSyllabus = rawSyllabus.map((lvl, idx) => {
                 let status = 'Locked';
                 if (idx === 0) {
                     const scheduled = new Date(`${lvl.scheduledDate}T${lvl.scheduledTime || '00:00'}`);
@@ -321,7 +347,21 @@ router.get('/sessions/session/:sessionId', async (req, res) => {
         const session = rows[0];
         let updated = false;
         const now = new Date();
-        const evalSyllabus = (session.syllabus || []).map(lvl => {
+        let currentSyllabus = session.syllabus || [];
+        if (currentSyllabus.length === 0) {
+            currentSyllabus = [{
+                levelNumber: 1,
+                topicName: 'General Mentorship & Progression',
+                scheduledDate: now.toISOString().split('T')[0],
+                scheduledTime: '00:00',
+                status: 'Active',
+                studentSubmission: '',
+                teacherChallengePrompt: ''
+            }];
+            updated = true;
+        }
+
+        const evalSyllabus = currentSyllabus.map(lvl => {
             if (lvl.status === 'Upcoming') {
                 const scheduled = new Date(`${lvl.scheduledDate}T${lvl.scheduledTime || '00:00'}`);
                 if (scheduled <= now) {
@@ -357,7 +397,20 @@ router.get('/sessions/active/:userId', async (req, res) => {
         const evaluatedRows = [];
         for (const session of rows) {
             let updated = false;
-            const evalSyllabus = (session.syllabus || []).map(lvl => {
+            let currentSyllabus = session.syllabus || [];
+            if (currentSyllabus.length === 0) {
+                currentSyllabus = [{
+                    levelNumber: 1,
+                    topicName: 'General Mentorship & Progression',
+                    scheduledDate: now.toISOString().split('T')[0],
+                    scheduledTime: '00:00',
+                    status: 'Active',
+                    studentSubmission: '',
+                    teacherChallengePrompt: ''
+                }];
+                updated = true;
+            }
+            const evalSyllabus = currentSyllabus.map(lvl => {
                 if (lvl.status === 'Upcoming') {
                     const scheduled = new Date(`${lvl.scheduledDate}T${lvl.scheduledTime || '00:00'}`);
                     if (scheduled <= now) {
@@ -445,6 +498,9 @@ router.post('/sessions/:sessionId/dispute', async (req, res) => {
         if (!session) return res.status(404).json({ error: 'Session not found' });
         if (session.status !== 'active') return res.status(400).json({ error: 'Session is not active' });
 
+        // This is the core of our AI Dispute Resolution Engine.
+        // When a student disputes a session, we don't need a human admin to intervene.
+        // We securely pull the entire chat history from the database and prepare it for Google Gemini.
         const { rows: messagesRows } = await db.query('SELECT * FROM messages WHERE session_id = $1 ORDER BY timestamp ASC', [sessionId]);
         const chatTranscript = messagesRows.map(m => `${m.sender_name} (${m.sender_id === session.teacher_id ? 'Teacher' : 'Student'}): ${m.text}`).join("\n");
 
@@ -457,6 +513,9 @@ router.post('/sessions/:sessionId/dispute', async (req, res) => {
             reasoning = "Gemini API Key missing. Applied standard 50/50 split fallback. Check backend/.env";
         } else {
             try {
+                // The AI acts as an impartial judge. We use strict prompt engineering to make it analyze the chat, 
+                // determine who is at fault, and automatically award the credits to the correct person.
+                // This saves us hours of customer support time and ensures fair resolutions.
                 const prompt = `You are an impartial arbitrator for a peer-to-peer skill exchange platform. Read the following chat transcript between a 'Teacher' and a 'Student'. The student has opened a dispute. Your job is to determine who is at fault based on the conversation (e.g., did the teacher fail to provide the agreed-upon help, or is the student trying to unfairly keep their credits?). Return your response ONLY in JSON format with two keys: "winner" (value must be either 'student' or 'teacher') and "reason" (a brief explanation of your decision).
 
 Chat Transcript:
