@@ -65,7 +65,10 @@ const enrichSkills = async (skillsArray) => {
         const qualityAverage = ((BAYES_CONSTANT * BAYES_DEFAULT_RATING) + totalRatingSum) / (BAYES_CONSTANT + reviewCount);
         const qualityScore = Math.min(qualityAverage / 5.0, 1.0); // Normalize 0-1
 
-        // Final Match Score Computation
+        // FINAL MATCH SCORE COMPUTATION
+        // EXPLANATION: This formula calculates the overall match score by equally weighting Quality and Reliability (50% each).
+        // Quality Score uses a Bayesian average to prevent new teachers with few ratings from skewing the results.
+        // Reliability Score penalizes teachers who have had sessions disputed against them, ensuring only dependable teachers rank high.
         const baseScore = (qualityScore * 0.5) + (reliabilityScore * 0.5);
         const matchScore = Math.max(0, Math.min(Math.round(baseScore * 100), 100));
 
@@ -120,14 +123,10 @@ router.get('/dual-match', async (req, res) => {
 
         const enriched = await enrichSkills(filtered);
 
-        // =========================================================================
-        // 💎 PRESENTATION POINT: PREMIUM MATCH ALGORITHM (The Safest Bet)
-        // -------------------------------------------------------------------------
-        // We filter for highly experienced teachers (5+ sessions) with an elite 90%+ reliability score.
-        // We then sort them strictly by their Bayesian quality score. 
-        // This guarantees the student gets the absolute best mentor available on the platform, 
-        // eliminating the risk of a bad experience for users willing to spend more credits.
-        // =========================================================================
+        // PREMIUM MATCH ALGORITHM
+        // EXPLANATION: This algorithm identifies the most trustworthy mentor on the platform.
+        // It strictly requires a high volume of completed sessions (5+) and an elite reliability score (>90%).
+        // By prioritizing reliability over pure affordability, we guarantee the safest bet for students spending premium credits.
         const eligiblePremium = enriched.filter(s => s.totalSessionsCount >= 5 && s.reliabilityScore > 0.90);
         eligiblePremium.sort((a, b) => {
             if (b.qualityScore !== a.qualityScore) return b.qualityScore - a.qualityScore;
@@ -136,14 +135,11 @@ router.get('/dual-match', async (req, res) => {
         });
         const premiumMatch = eligiblePremium.length > 0 ? eligiblePremium[0] : null;
 
-        // =========================================================================
-        // 💰 PRESENTATION POINT: TOP VALUE MATCH ALGORITHM (Best Bang for Credit)
-        // -------------------------------------------------------------------------
-        // We filter for affordable teachers (charging 3 credits or less).
-        // The ranking formula squares the quality score and divides by the cost: (Quality² / Credits).
-        // By squaring the quality score, we mathematically penalize bad teachers heavily, 
-        // ensuring that budget-conscious students are recommended the best possible mentor for their price point.
-        // =========================================================================
+        // TOP VALUE MATCH ALGORITHM
+        // EXPLANATION: This algorithm calculates the best "bang for your buck" for budget-conscious students.
+        // It filters for courses costing 3 credits or less. The sorting formula mathematically squares the quality score 
+        // before dividing by the cost: (Quality² / Credits). Squaring the quality score exponentially penalizes bad ratings,
+        // preventing cheap but low-quality teachers from outranking slightly more expensive but excellent teachers.
         const remainingForValue = enriched.filter(s => (!premiumMatch || s.id !== premiumMatch.id) && (s.creditsPerHour || 1) <= 3);
         remainingForValue.sort((a, b) => {
             const vfmA = Math.pow(a.qualityScore, 2) / (a.creditsPerHour || 1);
@@ -498,9 +494,10 @@ router.post('/sessions/:sessionId/dispute', async (req, res) => {
         if (!session) return res.status(404).json({ error: 'Session not found' });
         if (session.status !== 'active') return res.status(400).json({ error: 'Session is not active' });
 
-        // This is the core of our AI Dispute Resolution Engine.
-        // When a student disputes a session, we don't need a human admin to intervene.
-        // We securely pull the entire chat history from the database and prepare it for Google Gemini.
+        // AI DISPUTE RESOLUTION ENGINE
+        // EXPLANATION: When a student clicks "Dispute Session", this backend route automatically pulls the entire
+        // session's chat transcript from the database. Instead of a human admin reading it, we prepare the transcript
+        // and send it securely to the Google Gemini AI model to act as an impartial judge.
         const { rows: messagesRows } = await db.query('SELECT * FROM messages WHERE session_id = $1 ORDER BY timestamp ASC', [sessionId]);
         const chatTranscript = messagesRows.map(m => `${m.sender_name} (${m.sender_id === session.teacher_id ? 'Teacher' : 'Student'}): ${m.text}`).join("\n");
 
@@ -513,9 +510,10 @@ router.post('/sessions/:sessionId/dispute', async (req, res) => {
             reasoning = "Gemini API Key missing. Applied standard 50/50 split fallback. Check backend/.env";
         } else {
             try {
-                // The AI acts as an impartial judge. We use strict prompt engineering to make it analyze the chat, 
-                // determine who is at fault, and automatically award the credits to the correct person.
-                // This saves us hours of customer support time and ensures fair resolutions.
+                // AI EVALUATION LOGIC
+                // EXPLANATION: We pass a strict system prompt along with the chat transcript to Gemini. 
+                // Gemini is instructed to analyze the context of the conversation and determine who is at fault 
+                // based on the agreement. It automatically returns a JSON object declaring the winner, saving hours of manual support time.
                 const prompt = `You are an impartial arbitrator for a peer-to-peer skill exchange platform. Read the following chat transcript between a 'Teacher' and a 'Student'. The student has opened a dispute. Your job is to determine who is at fault based on the conversation (e.g., did the teacher fail to provide the agreed-upon help, or is the student trying to unfairly keep their credits?). Return your response ONLY in JSON format with two keys: "winner" (value must be either 'student' or 'teacher') and "reason" (a brief explanation of your decision).
 
 Chat Transcript:

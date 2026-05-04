@@ -119,13 +119,10 @@ export default function Session() {
     }, [messages]);
 
     useEffect(() => {
-        // =========================================================================
-        // ⏱️ PRESENTATION POINT 5: STATE MACHINE TIMING ENGINE
-        // -------------------------------------------------------------------------
-        // This useEffect acts as a strict time-gating engine. If a module is scheduled for the future ('Upcoming'), 
-        // the chat and progression are locked. It constantly polls the time, and the precise millisecond the 
-        // scheduled time hits, it automatically updates the state to 'Active' and opens the socket channels.
-        // =========================================================================
+        // STATE MACHINE TIMING ENGINE
+        // EXPLANATION: This useEffect hook acts as the timing mechanism. For "Upcoming" levels, it runs a 1-second interval.
+        // It compares the current time against the scheduled start time. The moment the current time surpasses the scheduled time,
+        // it fires a backend request to change the module status to 'Active', instantly unlocking the chat and progression buttons.
         // Countdown timer for Upcoming levels
         let interval;
         if (sessionDetails && sessionDetails.syllabus) {
@@ -166,13 +163,11 @@ export default function Session() {
         return () => clearInterval(interval);
     }, [sessionDetails, sessionId]);
 
-    // =========================================================================
-    // 🚦 PRESENTATION POINT 6: EMERGENCY RESCHEDULE & PROGRESSION GATING
-    // -------------------------------------------------------------------------
-    // This is the core logic that handles student progression requests and Emergency Reschedules.
-    // By passing an action (like 'request_reschedule' or 'submit_challenge'), it hits the backend level-action endpoint.
-    // This ensures teachers must review and approve challenges before the student can advance to the next level.
-    // =========================================================================
+    // PROGRESSION & EMERGENCY GATING LOGIC
+    // EXPLANATION: The handleAction function is the central switchboard for advancing the syllabus.
+    // When a student clicks "I'm Ready for the Next Level" or "Emergency: Request Reschedule", it sends an action payload here.
+    // For example, submitting an emergency reschedule passes 'request_reschedule', which stops the clock and requires the teacher
+    // to open the Bulk Scheduler and adjust the dates before progression can continue.
     const handleAction = async (action, payload = {}) => {
         const activeLevel = sessionDetails.syllabus[sessionDetails.currentLevel - 1];
         if (!activeLevel) return;
@@ -308,6 +303,11 @@ export default function Session() {
                     </h2>
                     
                     <div className="space-y-4 relative">
+                        {/* DYNAMIC SYLLABUS TREE LOGIC */}
+                        {/* EXPLANATION: This maps over the syllabus array to build the visual progression tree on the left.
+                            It reads the exact status ('Completed', 'Active', 'Upcoming', etc.) of each level from the database
+                            and dynamically assigns color coding and pulsing animations. This gives users immediate visual feedback
+                            on exactly where they are in the course timeline. */}
                         {syllabus.map((lvl, idx) => {
                             let nodeColor = "bg-slate-800 border-slate-700 text-slate-500";
                             let icon = <div className="w-3 h-3 rounded-full bg-slate-600" />;
@@ -572,6 +572,10 @@ export default function Session() {
                 </div>
             </div>
 
+            {/* AI QUIZ GENERATOR MODAL */}
+            {/* EXPLANATION: Once a course is fully completed, this component triggers. It fetches the syllabus
+                and uses Google Gemini to instantly generate a custom multiple-choice quiz based on the specific
+                topics the student just learned. Passing this quiz automatically mints an NFT badge for the student. */}
             {showQuizModal && <QuizModal 
                 sessionDetails={sessionDetails} 
                 currentUser={currentUser} 
@@ -609,6 +613,12 @@ export default function Session() {
                 </div>
             )}
 
+            {/* AI DISPUTE RESOLUTION MODAL */}
+            {/* EXPLANATION: If the student clicks "Dispute Session", this modal opens. When they submit their reason,
+                the `handleDisputeSubmit` function sends it to the backend. The backend then feeds the reason and 
+                the entire chat history into Google Gemini, which acts as an impartial judge. The UI freezes with
+                an "AI Analyzing..." spinner, and within seconds, Gemini's ruling is broadcast back via WebSockets,
+                instantly displaying the verdict and redirecting the users without human intervention. */}
             {showDisputeModal && (
                 <div className="fixed inset-0 min-h-screen bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-slate-800 border-2 border-rose-500/50 rounded-2xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(244,63,94,0.2)]">
