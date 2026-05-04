@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'YOUR_API_KEY_HERE');
+// genAI will be initialized dynamically in the routes to ensure we can trim the key and prevent spacing errors
 
 router.post('/generate-review', async (req, res) => {
     const { sessionId } = req.body;
@@ -27,6 +27,8 @@ router.post('/generate-review', async (req, res) => {
             return res.json({ suggestion: mockSuggestion });
         }
 
+        const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : 'YOUR_API_KEY_HERE';
+        const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const chatContext = sessionMessages.map(m => `${m.role}: ${m.text}`).join('\n');
         const prompt = `Based on the following chat context between a student and a teacher, generate a short, positive, 1-2 sentence review from the perspective of the student about the teacher's help.\n\nContext:\n${chatContext}`;
@@ -38,7 +40,7 @@ router.post('/generate-review', async (req, res) => {
         res.json({ suggestion });
     } catch (error) {
         console.error("AI Generation Error:", error);
-        res.status(500).json({ error: 'Failed to generate review' });
+        res.status(500).json({ error: error.message || 'Failed to generate review' });
     }
 });
 
@@ -66,6 +68,8 @@ router.post('/generate-quiz', async (req, res) => {
 
         // This is the core of our AI Gamification feature. 
         // We connect to Google Gemini to make the platform feel dynamic and intelligent.
+        const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : 'YOUR_API_KEY_HERE';
+        const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
         // Instead of hardcoding generic tests, we feed the specific course topic to the AI.
@@ -94,7 +98,7 @@ Do not return any markdown formatting like \`\`\`json, only the raw JSON array.`
         res.json({ quiz });
     } catch (error) {
         console.error("AI Quiz Generation Error:", error);
-        res.status(500).json({ error: 'Failed to generate quiz' });
+        res.status(500).json({ error: error.message || 'Failed to generate quiz' });
     }
 });
 
