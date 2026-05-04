@@ -29,7 +29,7 @@ router.post('/generate-review', async (req, res) => {
 
         const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : 'YOUR_API_KEY_HERE';
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const chatContext = sessionMessages.map(m => `${m.role}: ${m.text}`).join('\n');
         const prompt = `Based on the following chat context between a student and a teacher, generate a short, positive, 1-2 sentence review from the perspective of the student about the teacher's help.\n\nContext:\n${chatContext}`;
         
@@ -70,7 +70,7 @@ router.post('/generate-quiz', async (req, res) => {
         // We connect to Google Gemini to make the platform feel dynamic and intelligent.
         const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : 'YOUR_API_KEY_HERE';
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         
         // Instead of hardcoding generic tests, we feed the specific course topic to the AI.
         // The AI generates a unique, 5-question multiple choice quiz on the fly.
